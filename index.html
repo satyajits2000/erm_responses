@@ -3068,10 +3068,27 @@ const STORAGE_KEY = "erm_responses_v1";
 const RISKS_KEY = "erm_risks_v1";
 const UNIVERSE_KEY = "erm_universe_v1";
 
+/* Bulletproof localStorage array reader. Returns [] for ANYTHING that isn't
+   a genuine, non-empty array — missing key, null, "null" string, corrupted
+   JSON, an object instead of an array, whatever. This is the single
+   defended choke point for every local data store below, so a poisoned
+   localStorage value (e.g. left over from an earlier broken deploy on the
+   same origin) can never again silently crash a .getAll() call. */
+function safeGetArray(key){
+  try{
+    const raw = localStorage.getItem(key);
+    if(!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch(err){
+    console.warn(`Corrupted localStorage value for "${key}" — resetting to empty.`, err);
+    return [];
+  }
+}
+
 const LocalStore = {
   async getAll(){
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    return safeGetArray(STORAGE_KEY);
   },
   async add(response){
     const all = await LocalStore.getAll();
@@ -3128,10 +3145,9 @@ const Store = {
    Seeded once from SEED_RISKS on first load. */
 const RiskRegistry = {
   async getAll(){
-    const raw = localStorage.getItem(RISKS_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
+    const parsed = safeGetArray(RISKS_KEY);
     if(parsed.length > 0) return parsed;
-    // Empty array stored (e.g. from a stale/corrupted earlier session) — re-seed rather than staying empty forever.
+    // Empty/missing/corrupted — re-seed rather than staying empty forever.
     localStorage.setItem(RISKS_KEY, JSON.stringify(SEED_RISKS));
     return JSON.parse(JSON.stringify(SEED_RISKS));
   },
@@ -3181,8 +3197,7 @@ const RiskRegistry = {
    matching the existing riskUniverse field format used throughout the tool. */
 const UniverseRegistry = {
   async getAll(){
-    const raw = localStorage.getItem(UNIVERSE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
+    const parsed = safeGetArray(UNIVERSE_KEY);
     if(parsed.length > 0) return parsed;
     localStorage.setItem(UNIVERSE_KEY, JSON.stringify(SEED_UNIVERSE));
     return JSON.parse(JSON.stringify(SEED_UNIVERSE));
@@ -3228,8 +3243,7 @@ function makeSessionId(){
 
 const LocalSessionRegistry = {
   async getAll(){
-    const raw = localStorage.getItem(SESSIONS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    return safeGetArray(SESSIONS_KEY);
   },
   async saveAll(list){
     localStorage.setItem(SESSIONS_KEY, JSON.stringify(list));
@@ -4049,8 +4063,8 @@ const SEED_GROUP_FAMILIES = ["G1_Risk of Debarment","G2_Operational / Financial 
 const SEED_BUS = ["ANZ","ASIA","BRA","CAN","DBI","DNK","EGY","FRA","GLT","IND","ITA","KSA","UKI","USA"];
 
 function getOptionList(key, seed){
-  const raw = localStorage.getItem(key);
-  if(raw) return JSON.parse(raw);
+  const parsed = safeGetArray(key);
+  if(parsed.length > 0) return parsed;
   localStorage.setItem(key, JSON.stringify(seed));
   return seed.slice();
 }

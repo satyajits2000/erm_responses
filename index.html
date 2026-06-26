@@ -916,14 +916,14 @@ table.risk-table select.score-select{
         <table class="risk-table" id="liveParticipantsTable">
           <thead><tr>
             <th>Participant</th>
-            <th>BU</th>
-            <th>Submitted at</th>
-            <th>Risks scored</th>
+            <th>Status</th>
+            <th>Progress</th>
+            <th>Last activity</th>
           </tr></thead>
           <tbody></tbody>
         </table>
       </div>
-      <div id="liveEmptyState" class="sub" style="text-align:center; padding:30px 0;">No submissions yet for this session — participants will appear here the moment they complete the survey.</div>
+      <div id="liveEmptyState" class="sub" style="text-align:center; padding:30px 0;">No participants yet — they will appear here the moment they start scoring, even before completing all risks.</div>
     </div>
   </section>
 
@@ -3723,6 +3723,7 @@ var qrcode = function() {
 }();
 
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 /* =====================================================================
    FIREBASE — QR survey responses persist here once configured.
@@ -6124,10 +6125,13 @@ function renderLiveStats(responses, totalRisksInRegister){
   const table = document.getElementById('liveParticipantsTable');
   if(!tbody) return;
 
-  // Newest submissions first, so the admin sees who *just* finished at a glance.
+  // Newest submissions first
   const sorted = [...responses].sort((a,b)=> new Date(b.submittedAt) - new Date(a.submittedAt));
 
-  document.getElementById('liveParticipantCount').textContent = sorted.length;
+  document.getElementById('liveParticipantCount').textContent = sorted.filter(r=>{
+    const pct = totalRisksInRegister > 0 ? Math.round((r.scores||[]).length / totalRisksInRegister * 100) : 0;
+    return pct === 100;
+  }).length;
   document.getElementById('liveRiskCount').textContent = totalRisksInRegister;
   document.getElementById('liveLastSubmit').textContent = sorted.length
     ? new Date(sorted[0].submittedAt).toLocaleTimeString()
@@ -6142,20 +6146,36 @@ function renderLiveStats(responses, totalRisksInRegister){
   emptyState.classList.add('hidden');
 
   tbody.innerHTML = sorted.map(r=>{
-    const totalRisks = risks || AGG.length;
-    const pct = totalRisks > 0 ? Math.round((r.scores||[]).length / totalRisks * 100) : 0;
+    const scored = (r.scores||[]).length;
+    const pct = totalRisksInRegister > 0 ? Math.round(scored / totalRisksInRegister * 100) : 0;
     const fillColor = pct===100?'#27AE60':pct>=50?'#F1C40F':'#E67E22';
+    const status = pct===100 ? '✓ Complete' : `Scoring… ${scored}/${totalRisksInRegister}`;
+    const statusColor = pct===100 ? '#27AE60' : '#E67E22';
     return `
     <tr>
-      <td><b>${escapeXml(r.name || 'Anonymous')}</b></td>
-      <td>${escapeXml(r.bu || '—')}</td>
-      <td>${new Date(r.submittedAt).toLocaleString()}</td>
       <td>
         <div style="display:flex; align-items:center; gap:8px;">
-          <div class="progress-bar-inline" style="min-width:60px;"><div class="progress-bar-fill" style="width:${pct}%; background:${fillColor};"></div></div>
-          <span style="font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); white-space:nowrap;">${(r.scores||[]).length} · ${pct}%</span>
+          <div style="width:30px; height:30px; border-radius:50%; background:var(--systra-plum); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; flex-shrink:0;">
+            ${escapeXml((r.name||'?').charAt(0).toUpperCase())}
+          </div>
+          <div>
+            <div style="font-weight:700;">${escapeXml(r.name || 'Anonymous')}</div>
+            <div style="font-size:11px; color:var(--ink-soft);">${escapeXml(r.bu || '—')}</div>
+          </div>
         </div>
       </td>
+      <td>
+        <span style="font-size:11px; font-weight:700; color:${statusColor};">${status}</span>
+      </td>
+      <td>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="progress-bar-inline" style="min-width:80px;">
+            <div class="progress-bar-fill" style="width:${pct}%; background:${fillColor};"></div>
+          </div>
+          <span style="font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); white-space:nowrap;">${pct}%</span>
+        </div>
+      </td>
+      <td style="font-size:11px; color:var(--ink-soft);">${new Date(r.submittedAt).toLocaleTimeString()}</td>
     </tr>`;
   }).join('');
 }
@@ -6235,16 +6255,70 @@ async function startLiveListener(sessionId){
   if(storeBackend === FirebaseStore && fbDb){
     try{
       const {collection, query, where, onSnapshot} = window.__fsMod;
+
+      // Listen to fully submitted responses
       const base = collection(fbDb, ERM_RESPONSES_COLLECTION);
       const q = sessionId ? query(base, where('sessionId','==',sessionId)) : base;
+
+      // Also listen to live_progress for in-progress participants
+      const progressBase = collection(fbDb, ERM_LIVE_PROGRESS_COLLECTION);
+      const progressQ = sessionId ? query(progressBase, where('sessionId','==',sessionId)) : progressBase;
+
+      let submittedResponses = [];
+      let progressDocs = [];
+
+      function mergeAndRender(){
+        // Build a combined view: submitted participants + in-progress participants
+        // In-progress: group erm_live_progress by participantKey
+        const inProgressMap = new Map();
+        progressDocs.forEach(p=>{
+          const key = p.participantKey || p.name || 'unknown';
+          if(!inProgressMap.has(key)){
+            inProgressMap.set(key, {
+              name: p.name || 'Participant',
+              bu: p.bu || '',
+              sessionId: p.sessionId,
+              participantKey: key,
+              scores: [],
+              submittedAt: p.submittedAt || new Date().toISOString(),
+              inProgress: true
+            });
+          }
+          const entry = inProgressMap.get(key);
+          // Each doc = one risk scored
+          entry.scores.push({riskId: p.riskId});
+          // Update submittedAt to latest
+          if(p.submittedAt && p.submittedAt > entry.submittedAt){
+            entry.submittedAt = p.submittedAt;
+          }
+        });
+
+        // Submitted participants supersede in-progress ones
+        const submittedKeys = new Set(submittedResponses.map(r=>r.participantKey||r.name));
+        const inProgressOnly = [...inProgressMap.values()].filter(p=>!submittedKeys.has(p.participantKey));
+
+        const combined = [...submittedResponses, ...inProgressOnly];
+        renderLiveStats(combined, risks.length);
+      }
+
       liveUnsubscribe = onSnapshot(q, (snap)=>{
-        const responses = snap.docs.map(d=>d.data());
-        renderLiveStats(responses, risks.length);
+        submittedResponses = snap.docs.map(d=>d.data());
+        mergeAndRender();
       }, (err)=>{
-        console.warn('Live listener error — check Firestore Security Rules for erm_responses:', err);
+        console.warn('Live listener error:', err);
         dot.classList.remove('connected');
         label.textContent = 'Live updates unavailable — check connection';
       });
+
+      // Second listener for in-progress
+      const progressUnsub = onSnapshot(progressQ, (snap)=>{
+        progressDocs = snap.docs.map(d=>d.data());
+        mergeAndRender();
+      }, (err)=>{ console.warn('Progress listener error:', err); });
+
+      // Store combined unsubscribe
+      const origUnsub = liveUnsubscribe;
+      liveUnsubscribe = ()=>{ origUnsub(); progressUnsub(); };
       dot.classList.add('connected');
       label.textContent = 'Live — connected to Firebase';
       return;

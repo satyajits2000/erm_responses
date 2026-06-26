@@ -1409,14 +1409,19 @@ table.risk-table select.score-select{
         <div class="eyebrow">Enterprise Risk Management Workshop</div>
         <div id="surveySessionBadge" style="font-family:var(--font-mono); font-size:12px; color:var(--amber); font-weight:700; margin-bottom:4px;"></div>
         <h1>Risk Scoring Survey</h1>
-        <p>You'll be asked to rate <b><span id="surveyRiskCount">all</span> enterprise risks</b> on three dimensions: Likelihood, Impact, and Control Level. Takes about 5–7 minutes. Your responses are averaged anonymously with other participants.</p>
+        <p>You'll be asked to rate <b><span id="surveyRiskCount">all</span> enterprise risks</b> on three dimensions: Likelihood, Impact, and Control Level. Takes about 5–7 minutes. Your responses are averaged with other participants.</p>
       </div>
       <div class="welcome-card">
-        <label for="participantName">Your name (optional)</label>
+        <label for="participantName">Your name</label>
         <input type="text" id="participantName" placeholder="e.g. Satyajit Saha">
-        <label for="participantBU">Your Business Unit / region (optional)</label>
-        <input type="text" id="participantBU" placeholder="e.g. FRA, IND, USA…">
-        <button class="btn" style="width:100%;" id="startSurveyBtn">Start scoring →</button>
+        <!-- BU is inherited from the session — shown as info only, not editable -->
+        <div id="surveyBUInfo" style="display:none; margin-top:10px; padding:10px 12px; background:var(--paper); border:1px solid var(--line); border-radius:8px; font-size:12px; color:var(--ink-soft);">
+          <span style="font-weight:700; color:var(--navy);">Business Unit:</span>
+          <span id="surveyBUDisplay" style="font-family:var(--font-mono); font-weight:700; color:var(--systra-plum); margin-left:6px;"></span>
+          <span style="margin-left:6px; color:var(--ink-soft);">(assigned by facilitator)</span>
+        </div>
+        <input type="hidden" id="participantBU">
+        <button class="btn" style="width:100%; margin-top:14px;" id="startSurveyBtn">Start scoring →</button>
       </div>
     </div>
 
@@ -6215,8 +6220,8 @@ async function renderSessionsTable(){
     const buTag = s.bu
       ? `<span style="font-family:var(--font-mono); font-weight:700; font-size:12px; color:var(--navy); padding:2px 8px; background:var(--paper); border:1px solid var(--line); border-radius:12px;">${escapeXml(s.bu)}</span>`
       : '<span style="color:var(--ink-soft); font-size:11px;">—</span>';
-    // Show consolidate button only if session has responses and a BU
-    const canConsolidate = count > 0 && s.bu;
+    // Show consolidate button if session has a BU (responses may be in live_progress)
+    const canConsolidate = s.bu;
     return `
     <tr data-session-id="${escapeXml(s.id)}">
       <td><b>${escapeXml(s.label)}</b><div style="color:var(--ink-soft); font-size:11px; margin-top:2px;">${escapeXml(s.id)}</div></td>
@@ -6228,6 +6233,7 @@ async function renderSessionsTable(){
       <td class="row-actions">
         <button class="icon-btn view-session-btn">View</button>
         ${canConsolidate ? '<button class="icon-btn consolidate-session-btn" style="color:var(--systra-plum); font-weight:700;">⊕ Consolidate</button>' : ''}
+        ${!s.bu ? '<button class="icon-btn assign-bu-btn" style="color:var(--systra-steel-blue);">+ Assign BU</button>' : ''}
         <button class="icon-btn rename-session-btn">Rename</button>
         <button class="icon-btn toggle-session-btn">${s.status === 'closed' ? 'Reopen' : 'Close'}</button>
         <button class="icon-btn danger delete-session-btn">Delete</button>
@@ -6241,12 +6247,24 @@ async function renderSessionsTable(){
   tbody.querySelectorAll('.consolidate-session-btn').forEach(btn=>{
     btn.addEventListener('click', (e)=> openConsolidationPanel(e.target.closest('tr').dataset.sessionId));
   });
-  tbody.querySelectorAll('.rename-session-btn').forEach(btn=>{
+  tbody.querySelectorAll('.assign-bu-btn').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       const id = e.target.closest('tr').dataset.sessionId;
-      const sessions2 = await SessionRegistry.getAll();
-      const s = sessions2.find(x=>x.id===id);
-      const newLabel = prompt('Rename session:', s.label);
+      const buList = JSON.parse(localStorage.getItem('erm_bus_v1')||'null') || SEED_BUS;
+      const bu = prompt(`Assign a BU to this session:\nAvailable: ${buList.join(', ')}`, '');
+      if(!bu || !bu.trim()) return;
+      const all = await sessionBackend.getAll();
+      const idx = all.findIndex(s=>s.id===id);
+      if(idx>=0){
+        all[idx].bu = bu.trim().toUpperCase();
+        await sessionBackend.saveAll(all);
+        await renderSessionsTable();
+        await refreshCollectTab();
+      }
+    });
+  });
+  tbody.querySelectorAll('.rename-session-btn').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
       if(newLabel && newLabel.trim()){
         await SessionRegistry.rename(id, newLabel.trim());
         await renderSessionsTable();
@@ -6604,14 +6622,10 @@ async function openSessionDetail(sessionId){
   document.getElementById('sessionDetailSub').textContent =
     `BU: ${session.bu||'—'} · ${session.mode==='live'?'Live':'Self-paced'} · Created: ${new Date(session.createdAt).toLocaleString()}`;
 
-  // Show consolidate button if has responses and BU
+  // Show consolidate button whenever session has a BU assigned
   const consolidateBtn = document.getElementById('consolidateSessionBtn');
   if(consolidateBtn){
-    if(responses.length > 0 && session.bu){
-      consolidateBtn.style.display = '';
-    } else {
-      consolidateBtn.style.display = 'none';
-    }
+    consolidateBtn.style.display = session.bu ? '' : 'none';
   }
 
   document.getElementById('sessionsListPanel').classList.add('hidden');
@@ -6667,9 +6681,54 @@ async function openConsolidationPanel(sessionId){
   if(!consolidationSession) return;
 
   const bu = consolidationSession.bu;
-  const responses = await Store.getBySession(sessionId);
+
+  // Get submitted responses first
+  let responses = await Store.getBySession(sessionId);
+
+  // If no fully-submitted responses, pull from erm_live_progress (in-progress scores)
+  // This lets the facilitator consolidate even if participants didn't hit Submit
+  if(responses.length === 0 && fbDb){
+    try{
+      const {collection, query, where, getDocs} = window.__fsMod;
+      const progressSnap = await getDocs(
+        query(collection(fbDb, ERM_LIVE_PROGRESS_COLLECTION), where('sessionId','==',sessionId))
+      );
+      if(!progressSnap.empty){
+        // Group live_progress docs by participantKey → synthetic response objects
+        const progressMap = new Map();
+        progressSnap.docs.map(d=>d.data()).forEach(p=>{
+          const key = p.participantKey || p.name || 'unknown';
+          if(!progressMap.has(key)){
+            progressMap.set(key, {
+              name: p.name||'Participant',
+              bu: p.bu || bu,
+              sessionId,
+              participantKey: key,
+              scores: [],
+              submittedAt: p.submittedAt || new Date().toISOString()
+            });
+          }
+          const entry = progressMap.get(key);
+          entry.scores.push({
+            riskId: p.riskId,
+            likelihood: p.likelihood,
+            impact: p.impact,
+            control: p.control
+          });
+          if(p.submittedAt && p.submittedAt > entry.submittedAt){
+            entry.submittedAt = p.submittedAt;
+          }
+        });
+        responses = [...progressMap.values()];
+        console.log(`Consolidation: using ${responses.length} in-progress responses from erm_live_progress`);
+      }
+    } catch(err){
+      console.warn('Could not read live_progress for consolidation:', err);
+    }
+  }
+
   if(!responses.length){
-    alert('No submissions found for this session yet.'); return;
+    alert('No responses found for this session yet.\n\nIf you used a Live session, make sure participants have submitted at least one risk score.'); return;
   }
 
   const universe = await UniverseRegistry.getAll();
@@ -6702,71 +6761,110 @@ async function openConsolidationPanel(sessionId){
   });
 
   // Get all risk IDs that were scored
-  const scoredRiskIds = [...scoresByRisk.keys()];
+  const scoredRiskIds = new Set(scoresByRisk.keys());
   // Get existing risks to map universe codes
   const allRisks = await RiskRegistry.getAll();
 
-  // Build table rows — one per scored risk
+  // Build the FULL list of risks to show — use ALL risks in register
+  // (not just the ones that were scored) so facilitator can see gaps
+  const allRiskIds = allRisks.map(r=>r.id);
+
+  // Count how many risks each participant scored
   const participantNames = [...new Set(responses.map(r=>r.name||'Anon'))];
+  const totalRisks = allRiskIds.length;
+  const missedCount = allRiskIds.filter(id=>!scoredRiskIds.has(id)).length;
+
+  // Sub-header showing coverage summary
+  document.getElementById('consolidationSub').innerHTML =
+    `Session: "<b>${escapeXml(consolidationSession.label)}</b>" · BU: <b>${escapeXml(bu)}</b> · ` +
+    `${responses.length} participant(s) · ${totalRisks} risks total · ` +
+    `<span style="color:${missedCount>0?'#E67E22':'#27AE60'}; font-weight:700;">` +
+    `${missedCount > 0 ? '⚠ '+missedCount+' risk(s) not scored by any participant — facilitator score required' : '✓ All risks scored'}</span><br>` +
+    `<span style="font-size:11px; color:var(--ink-soft);">Blue columns = your final score (pre-filled with average). ` +
+    `Yellow rows = missed by at least one participant. Red rows = not scored by anyone — enter facilitator score.</span>`;
 
   // Build header
   const headerRow = document.getElementById('consolidationHeaderRow');
   headerRow.innerHTML = `
-    <th style="min-width:120px;">Risk</th>
-    <th>Title</th>
-    ${participantNames.map(n=>`<th style="font-size:10px; color:var(--ink-soft); min-width:80px;">${escapeXml(n)}<br><span style="font-weight:400;">L / I / C</span></th>`).join('')}
-    <th style="background:#EAF0FB; color:var(--navy);">Avg L</th>
-    <th style="background:#EAF0FB; color:var(--navy);">Avg I</th>
-    <th style="background:#EAF0FB; color:var(--navy);">Avg C</th>
+    <th style="min-width:60px;">Risk ID</th>
+    <th style="min-width:180px;">Title</th>
+    <th style="min-width:80px; background:#F8F9FA;">Coverage</th>
+    ${participantNames.map(n=>`<th style="font-size:10px; color:var(--ink-soft); min-width:80px; text-align:center;">${escapeXml(n)}<br><span style="font-weight:400;">L / I / C</span></th>`).join('')}
+    <th style="background:#EAF0FB; color:var(--navy); min-width:60px;">Avg L</th>
+    <th style="background:#EAF0FB; color:var(--navy); min-width:60px;">Avg I</th>
+    <th style="background:#EAF0FB; color:var(--navy); min-width:60px;">Avg C</th>
     <th style="background:#E8F0FE; color:var(--systra-plum); min-width:80px;">Final L ✎</th>
     <th style="background:#E8F0FE; color:var(--systra-plum); min-width:80px;">Final I ✎</th>
     <th style="background:#E8F0FE; color:var(--systra-plum); min-width:80px;">Final C ✎</th>`;
 
-  // Build body
+  // Build body — one row per risk in register
   const tbody = document.getElementById('consolidationBody');
-  tbody.innerHTML = scoredRiskIds.map(riskId=>{
-    const scores = scoresByRisk.get(riskId);
-    const avgL = scores.reduce((s,r)=>s+r.likelihood,0)/scores.length;
-    const avgI = scores.reduce((s,r)=>s+r.impact,0)/scores.length;
-    const avgC = scores.reduce((s,r)=>s+r.control,0)/scores.length;
+  tbody.innerHTML = allRiskIds.map(riskId=>{
+    const scores = scoresByRisk.get(riskId) || [];
+    const scoredCount = scores.length;
+    const totalPart = participantNames.length;
+    const missedBy = participantNames.filter(n=>!scores.find(s=>s.name===n));
+    const allMissed = scoredCount === 0;
+    const someMissed = scoredCount > 0 && missedBy.length > 0;
+
+    // Averages (use 2 as default if no scores)
+    const avgL = scoredCount ? scores.reduce((s,r)=>s+r.likelihood,0)/scoredCount : 2;
+    const avgI = scoredCount ? scores.reduce((s,r)=>s+r.impact,0)/scoredCount : 2;
+    const avgC = scoredCount ? scores.reduce((s,r)=>s+r.control,0)/scoredCount : 2;
     const roundL = Math.round(avgL), roundI = Math.round(avgI), roundC = Math.round(avgC);
 
-    // Find existing risk title from register or universe
-    const existingRisk = allRisks.find(r=>r.id===riskId || r.riskUniverse?.startsWith(riskId+'_'));
-    const uEntry = universe.find(u=>u.code===riskId || riskId.startsWith(u.code+'_'));
+    // Find title
+    const existingRisk = allRisks.find(r=>r.id===riskId);
+    const uEntry = universe.find(u=>u.code===riskId || riskId.startsWith(u.code+'_') ||
+                                    existingRisk?.riskUniverse?.startsWith(u.code+'_'));
     const title = existingRisk?.title || uEntry?.label || riskId;
 
-    // Participant score cells
+    // Row background
+    const rowBg = allMissed ? '#FFF3CD' : someMissed ? '#FFF8F0' : 'transparent';
+    const rowBorder = allMissed ? 'border-left:4px solid #E67E22;' : someMissed ? 'border-left:3px solid #F1C40F;' : '';
+
+    // Coverage badge
+    const coverageBadge = allMissed
+      ? `<span style="font-size:10px; font-weight:700; padding:2px 6px; background:#FDECEA; color:#E74C3C; border-radius:10px;">✗ Not scored</span>`
+      : someMissed
+      ? `<span style="font-size:10px; font-weight:700; padding:2px 6px; background:#FEF3E7; color:#E67E22; border-radius:10px;">⚠ ${scoredCount}/${totalPart}</span>`
+      : `<span style="font-size:10px; font-weight:700; padding:2px 6px; background:#E8F8EF; color:#27AE60; border-radius:10px;">✓ ${scoredCount}/${totalPart}</span>`;
+
+    // Participant cells
     const pCells = participantNames.map(name=>{
       const ps = scores.find(s=>s.name===name);
       return ps
         ? `<td style="font-family:var(--font-mono); font-size:11px; text-align:center; white-space:nowrap;">${ps.likelihood} / ${ps.impact} / ${ps.control}</td>`
-        : `<td style="color:var(--ink-soft); text-align:center; font-size:11px;">—</td>`;
+        : `<td style="text-align:center; font-size:11px;"><span style="color:#E74C3C; font-weight:700;" title="${escapeXml(name)} did not score this risk">✗ missed</span></td>`;
     }).join('');
 
-    // Zone colour for inherent avg
-    const inhAvg = avgL * avgI;
-    const zoneCol = inhAvg>=12?'#FDECEA':inhAvg>=9?'#FEF3E7':inhAvg>=4?'#FFFDE7':'#E8F8EF';
+    // Avg cells — show "Facilitator" label if no scores at all
+    const avgDisplay = allMissed
+      ? `<td colspan="3" style="background:#FFF3CD; text-align:center; font-size:11px; color:#856404; font-style:italic;">No participant scores — set facilitator score →</td>`
+      : `<td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgL.toFixed(1)}</td>
+         <td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgI.toFixed(1)}</td>
+         <td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgC.toFixed(1)}</td>`;
 
-    return `<tr data-risk-id="${escapeXml(riskId)}" style="background:${zoneCol}08;">
-      <td style="font-family:var(--font-mono); font-weight:700;">${escapeXml(riskId)}</td>
-      <td style="font-size:12px; max-width:200px;">${escapeXml(title)}</td>
+    const selectStyle = `width:60px; font-size:12px; text-align:center; border:1.5px solid ${allMissed?'#E67E22':'var(--systra-plum)'}; border-radius:4px; background:${allMissed?'#FFF8F0':'#fff'};`;
+
+    return `<tr data-risk-id="${escapeXml(riskId)}" style="background:${rowBg}; ${rowBorder}">
+      <td style="font-family:var(--font-mono); font-weight:700; font-size:12px;">${escapeXml(riskId)}</td>
+      <td style="font-size:12px;">${escapeXml(title)}</td>
+      <td style="text-align:center;">${coverageBadge}</td>
       ${pCells}
-      <td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgL.toFixed(1)}</td>
-      <td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgI.toFixed(1)}</td>
-      <td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgC.toFixed(1)}</td>
+      ${avgDisplay}
       <td style="background:#E8F0FE; text-align:center; padding:4px;">
-        <select class="final-l" style="width:60px; font-size:12px; text-align:center; border:1px solid var(--systra-plum); border-radius:4px;">
+        <select class="final-l" style="${selectStyle}">
           ${[1,2,3,4].map(v=>`<option value="${v}" ${v===roundL?'selected':''}>${v}</option>`).join('')}
         </select>
       </td>
       <td style="background:#E8F0FE; text-align:center; padding:4px;">
-        <select class="final-i" style="width:60px; font-size:12px; text-align:center; border:1px solid var(--systra-plum); border-radius:4px;">
+        <select class="final-i" style="${selectStyle}">
           ${[1,2,3,4].map(v=>`<option value="${v}" ${v===roundI?'selected':''}>${v}</option>`).join('')}
         </select>
       </td>
       <td style="background:#E8F0FE; text-align:center; padding:4px;">
-        <select class="final-c" style="width:60px; font-size:12px; text-align:center; border:1px solid var(--systra-plum); border-radius:4px;">
+        <select class="final-c" style="${selectStyle}">
           ${[1,2,3,4].map(v=>`<option value="${v}" ${v===roundC?'selected':''}>${v}</option>`).join('')}
         </select>
       </td>
@@ -8704,6 +8802,17 @@ async function enterSurveyMode(){
     surveyState.session = match;
     const badge = document.getElementById('surveySessionBadge');
     if(badge) badge.textContent = match.label;
+
+    // Auto-fill BU from session — participant doesn't need to enter it
+    const sessionBU = match.bu || '';
+    const buInput = document.getElementById('participantBU');
+    const buInfo = document.getElementById('surveyBUInfo');
+    const buDisplay = document.getElementById('surveyBUDisplay');
+    if(buInput) buInput.value = sessionBU;
+    if(sessionBU && buInfo && buDisplay){
+      buInfo.style.display = '';
+      buDisplay.textContent = sessionBU;
+    }
   }
 
   // Live count for the welcome copy — reflects the current register size

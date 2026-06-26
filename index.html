@@ -616,7 +616,16 @@ table.risk-table select.score-select{
           <button class="hvm-btn" id="heatmapViewGrid" title="CoAudit-style grid view">⊞ Grid</button>
         </div>
       </div>
-      <!-- Grid layer toggle — only visible in Grid mode, separate row for clarity -->
+      <!-- Aggregation mode toggle — BU view vs Group Average -->
+      <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--line); display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft);">View:</span>
+        <div class="heatmap-view-toggle">
+          <button class="hvm-btn active" id="heatmapAggBU" title="One dot per BU risk entry">🏢 By BU</button>
+          <button class="hvm-btn" id="heatmapAggGroup" title="One dot per universe category, averaged across all BUs">⊕ Group Average</button>
+        </div>
+        <span id="heatmapAggDesc" style="font-size:11px; color:var(--ink-soft);">Each dot = one BU's risk entry (R01-FRA, R01-IND etc.)</span>
+      </div>
+      <!-- Grid layer toggle — only visible in Grid mode -->
       <div id="gridLayerRow" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid var(--line); display:flex; align-items:center; gap:12px;">
         <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft);">Show layer:</span>
         <div class="heatmap-view-toggle" id="gridLayerToggle">
@@ -819,6 +828,7 @@ table.risk-table select.score-select{
         <table class="risk-table" id="sessionsTable">
           <thead><tr>
             <th>Session</th>
+            <th>BU</th>
             <th>Mode</th>
             <th>Created</th>
             <th>Submissions</th>
@@ -834,11 +844,12 @@ table.risk-table select.score-select{
       <div class="panel-head">
         <div>
           <h2 id="sessionDetailTitle">Session</h2>
-          <div class="sub">Individual participant submissions for this session.</div>
+          <div class="sub" id="sessionDetailSub">Individual participant submissions for this session.</div>
         </div>
-        <div style="display:flex; gap:8px;">
-          <button class="btn ghost sm" id="exportSessionBtn">Export this session (CSV)</button>
-          <button class="btn ghost sm" id="closeSessionDetailBtn">← Back to all sessions</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn sm" id="consolidateSessionBtn" style="background:var(--systra-plum); border-color:var(--systra-plum); color:#fff; display:none;">⊕ Consolidate scores → Register</button>
+          <button class="btn ghost sm" id="exportSessionBtn">Export CSV</button>
+          <button class="btn ghost sm" id="closeSessionDetailBtn">← Back</button>
         </div>
       </div>
       <div style="overflow-x:auto;">
@@ -854,6 +865,38 @@ table.risk-table select.score-select{
         </table>
       </div>
     </div>
+
+    <!-- Consolidation Panel -->
+    <div class="panel hidden" id="consolidationPanel" style="margin-top:18px;">
+      <div class="panel-head">
+        <div>
+          <h2>Consolidate Session Scores</h2>
+          <div class="sub" id="consolidationSub">Review participant scores for each risk. Averages are pre-filled — adjust the final score if needed, then apply to the risk register.</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn ghost sm" id="cancelConsolidationBtn">← Cancel</button>
+          <button class="btn sm" id="applyConsolidationBtn" style="background:var(--good); border-color:var(--good);">✓ Apply to Risk Register</button>
+        </div>
+      </div>
+
+      <!-- Score legend -->
+      <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px; padding:10px 14px; background:var(--paper); border-radius:8px; border:1px solid var(--line); font-size:11px; color:var(--ink-soft);">
+        <span><b>Likelihood:</b> 1=Unlikely · 2=Rare · 3=Possible · 4=Frequent</span>
+        <span><b>Impact:</b> 1=Low · 2=Medium · 3=High · 4=Critical</span>
+        <span><b>Control:</b> 1=Informal · 2=Defined · 3=Managed · 4=Optimized</span>
+        <span style="color:var(--systra-plum); font-weight:700;">Blue columns = your final score (pre-filled with average, editable)</span>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table class="risk-table" id="consolidationTable">
+          <thead>
+            <tr id="consolidationHeaderRow"></tr>
+          </thead>
+          <tbody id="consolidationBody"></tbody>
+        </table>
+      </div>
+    </div>
+
   </section>
 
   <!-- ===== TAB: LIVE PARTICIPATION (admin) ===== -->
@@ -4376,14 +4419,15 @@ const SessionRegistry = {
     const list = await sessionBackend.getAll();
     return list.sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
   },
-  async create(label, mode){
+  async create(label, mode, bu){
     const id = makeSessionId();
     const session = {
       id,
       label: label && label.trim() ? label.trim() : id,
       createdAt: new Date().toISOString(),
-      status: 'open', // open | closed — closed sessions are read-only (QR still works unless you also stop sharing the link)
-      mode: mode === 'live' ? 'live' : 'selfpaced' // selfpaced = today's behaviour; live = facilitator-paced
+      status: 'open',
+      mode: mode === 'live' ? 'live' : 'selfpaced',
+      bu: bu || ''
     };
     const all = await sessionBackend.getAll();
     all.push(session);
@@ -4762,7 +4806,10 @@ function renderHeatmap(containerId, items, opts){
   let points = items.map(it=>{
     const xv = it[opts.xField], yv = it[opts.yField];
     const universeName = (it.riskUniverse || it.title || '').replace(/^[A-Z]\d+_/, '');
-    const labelText = `${it.id} - ${universeName.length>30 ? universeName.slice(0,28)+'…' : universeName}`;
+    // In group avg mode, label = universe code + BU count; otherwise risk ID + universe
+    const labelText = it._groupAvg
+      ? `${it.id} (${it._buCount} BU${it._buCount!==1?'s':''})`
+      : `${it.id} - ${universeName.length>30 ? universeName.slice(0,28)+'…' : universeName}`;
     return {id: it.id, x: xPos(xv), y: yPos(yv), raw: it, labelText};
   });
 
@@ -5157,6 +5204,26 @@ function closeRiskDetail(){
   currentDetailRiskId = null;
 }
 
+function buildScoreHistoryHtml(risk){
+  if(!risk.scoreHistory || !risk.scoreHistory.length) return '';
+  const items = [...risk.scoreHistory].reverse().map(h=>{
+    return '<div style="display:flex; align-items:center; gap:12px; padding:6px 0; border-bottom:1px solid rgba(241,196,15,0.2); font-size:12px;">'
+      + '<div style="flex:1;">'
+      + '<div style="font-weight:600; color:var(--navy);">' + escapeXml(h.sessionLabel||h.sessionId||'—') + '</div>'
+      + '<div style="font-size:11px; color:var(--ink-soft);">' + new Date(h.date).toLocaleDateString() + '</div>'
+      + '</div>'
+      + '<div style="display:flex; gap:6px;">'
+      + '<span style="font-family:var(--font-mono); font-size:11px; padding:2px 6px; background:#FFF9C4; border-radius:4px; color:#856404;">L:' + h.likelihoodScore + '</span>'
+      + '<span style="font-family:var(--font-mono); font-size:11px; padding:2px 6px; background:#FFF9C4; border-radius:4px; color:#856404;">I:' + h.impactScore + '</span>'
+      + '<span style="font-family:var(--font-mono); font-size:11px; padding:2px 6px; background:#FFF9C4; border-radius:4px; color:#856404;">C:' + h.controlScore + '</span>'
+      + '</div></div>';
+  }).join('');
+  return '<div style="margin-top:16px; padding:12px 14px; background:#FFFDE7; border:1px solid #F1C40F; border-radius:8px;">'
+    + '<div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#856404; margin-bottom:10px;">'
+    + '\uD83D\uDCCB Score History (' + risk.scoreHistory.length + ' previous session' + (risk.scoreHistory.length!==1?'s':'') + ')</div>'
+    + items + '</div>';
+}
+
 function renderRiskDetailTab(tab, risk){
   const body = document.getElementById('riskDetailBody');
   if(tab === 'overview'){
@@ -5195,18 +5262,22 @@ function renderRiskDetailTab(tab, risk){
       </div>
       ${risk.targetLikelihoodScore && risk.targetImpactScore ? `
       <div style="margin-top:16px; padding:10px 14px; background:#EAF6FF; border:1px solid #C8E3F5; border-radius:8px; font-size:12px; color:var(--systra-steel-blue);">
-        🎯 <b>Target:</b> Likelihood ${risk.targetLikelihoodScore} · Impact ${risk.targetImpactScore} · Control ${risk.targetControlScore||'—'}
+        \u{1F3AF} <b>Target:</b> Likelihood ${risk.targetLikelihoodScore} \xB7 Impact ${risk.targetImpactScore} \xB7 Control ${risk.targetControlScore||'—'}
       </div>` : ''}
       <div style="margin-top:16px;">
         <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); margin-bottom:8px;">Details</div>
         <table style="width:100%; font-size:12px; border-collapse:collapse;">
-          ${[['Group Family', risk.groupFamily],['Business Unit', risk.bu],['Status', risk.status],['Using seed scores?', risk.usingSeed?'Yes (no live responses yet)':'No — live average']].map(([k,v])=>`
+          ${[['Group Family', risk.groupFamily],['Business Unit', risk.bu],['Status', risk.status],
+             ['Last updated', risk.lastUpdated ? new Date(risk.lastUpdated).toLocaleDateString() : '—'],
+             ['Source', risk.usingSeed?'Seed value (no live responses yet)':'Workshop average']
+            ].map(([k,v])=>`
           <tr style="border-bottom:1px solid var(--line);">
             <td style="padding:7px 0; color:var(--ink-soft); width:46%;">${k}</td>
             <td style="padding:7px 0; font-weight:600;">${escapeXml(String(v||'—'))}</td>
           </tr>`).join('')}
         </table>
-      </div>`;
+      </div>
+      ${buildScoreHistoryHtml(risk)}`;
 
   } else if(tab === 'scores'){
     const matches = riskDetailResponses.flatMap(resp=>
@@ -5270,13 +5341,85 @@ function renderStatStrip(nResp){
   `;
 }
 
+/* =====================================================================
+   GROUP AVERAGE AGGREGATION
+   Groups all risks by Risk Universe code, averages L/I/C scores across
+   all BUs that have a risk in that universe category.
+   Returns synthetic AGG-compatible entries labelled by universe code.
+   ===================================================================== */
+function getGroupAverageAgg(filterState){
+  // Start from the full AGG (or family/status filtered, but NOT BU filtered)
+  const base = AGG.filter(r=>{
+    if(filterState.family && r.groupFamily!==filterState.family) return false;
+    if(filterState.status && r.status!==filterState.status) return false;
+    return true;
+  });
+
+  // Group by universe code (first part before '_')
+  const byUniverse = new Map();
+  base.forEach(r=>{
+    const uCode = (r.riskUniverse||'').split('_')[0] || r.id;
+    if(!byUniverse.has(uCode)) byUniverse.set(uCode, []);
+    byUniverse.get(uCode).push(r);
+  });
+
+  // Average each group
+  const avgEntries = [];
+  byUniverse.forEach((risks, uCode)=>{
+    const n = risks.length;
+    const avgL = risks.reduce((s,r)=>s+r.likelihoodAvg, 0) / n;
+    const avgI = risks.reduce((s,r)=>s+r.impactAvg, 0) / n;
+    const avgC = risks.reduce((s,r)=>s+r.controlAvg, 0) / n;
+    const inhAvg = avgL * avgI;
+    const buList = [...new Set(risks.map(r=>r.bu).filter(Boolean))].join(', ');
+    // Build a synthetic entry compatible with renderGradientHeatmap / renderGridHeatmap
+    avgEntries.push({
+      id: uCode,
+      title: risks[0]?.riskUniverse?.split('_').slice(1).join('_') || uCode,
+      riskUniverse: risks[0]?.riskUniverse || uCode,
+      groupFamily: risks[0]?.groupFamily || '',
+      bu: buList,            // show all BUs contributing
+      likelihoodAvg: avgL,
+      impactAvg: avgI,
+      controlAvg: avgC,
+      inherentAvg: inhAvg,
+      targetLikelihoodScore: risks[0]?.targetLikelihoodScore || 0,
+      targetImpactScore: risks[0]?.targetImpactScore || 0,
+      targetControlScore: risks[0]?.targetControlScore || 0,
+      n,                     // number of BUs contributing
+      usingSeed: risks.every(r=>r.usingSeed),
+      _groupAvg: true,       // flag so labels show universe code not risk ID
+      _buCount: n
+    });
+  });
+
+  return avgEntries;
+}
+
 let heatmapViewMode = 'gradient'; // 'gradient' | 'grid'
 let gridLayerMode = 'inherent';   // 'inherent' | 'residual' | 'target'
+let heatmapAggMode = 'bu';        // 'bu' | 'group'
 
 function renderHeatmaps(){
-  const filtered = getFilteredAgg(mapFilterState);
-  document.getElementById('mapFilterCount').textContent =
-    filtered.length === AGG.length ? `Showing all ${AGG.length} risks` : `Showing ${filtered.length} of ${AGG.length} risks`;
+  // Choose the right dataset based on aggregation mode
+  const filtered = heatmapAggMode === 'group'
+    ? getGroupAverageAgg(mapFilterState)
+    : getFilteredAgg(mapFilterState);
+
+  const totalLabel = heatmapAggMode === 'group'
+    ? `${filtered.length} universe categories (averaged across ${[...new Set(AGG.map(r=>r.bu).filter(Boolean))].length} BUs)`
+    : (filtered.length === AGG.length ? `Showing all ${AGG.length} risks` : `Showing ${filtered.length} of ${AGG.length} risks`);
+  document.getElementById('mapFilterCount').textContent = totalLabel;
+
+  // Update map titles
+  const inherentTitle = document.getElementById('inherentMapTitle');
+  const residualTitle = document.getElementById('residualMapTitle');
+  if(inherentTitle) inherentTitle.textContent = heatmapAggMode === 'group'
+    ? 'Group Inherent Risk — Universe Average'
+    : 'Inherent Risk Assessment';
+  if(residualTitle) residualTitle.textContent = heatmapAggMode === 'group'
+    ? 'Group Residual Risk — Universe Average'
+    : 'Residual Risk Assessment';
 
   if(filtered.length === 0){
     ['inherentMap','residualMap'].forEach(id=>{
@@ -5478,10 +5621,14 @@ function renderGridHeatmap(containerId, items, opts){
         dy = r*Math.sin(angle);
       }
       const px = cx+dx, py = cy+dy;
-      const label = it.id.replace('R','');
+      const label = it._groupAvg ? it.id : it.id.replace('R','');
+      const tooltip = it._groupAvg
+        ? `${it.id}: ${it.title}\nAvg L=${it.likelihoodAvg.toFixed(1)} I=${it.impactAvg.toFixed(1)} C=${it.controlAvg.toFixed(1)}\nBUs contributing: ${it.bu}`
+        : `${it.id}: ${it.title}\nL=${it.likelihoodAvg.toFixed(1)} I=${it.impactAvg.toFixed(1)} C=${it.controlAvg.toFixed(1)}`;
       dots += `<g class="ghm-risk-dot" data-id="${escapeXml(it.id)}">
+        <title>${escapeXml(tooltip)}</title>
         <circle cx="${px}" cy="${py}" r="${DOT_R}" class="ghm-dot"/>
-        <text x="${px}" y="${py}" class="ghm-dot-label">${escapeXml(it.id.length<=3 ? it.id : label)}</text>
+        <text x="${px}" y="${py}" class="ghm-dot-label">${escapeXml(it._groupAvg ? it.id : (it.id.length<=3 ? it.id : label))}</text>
       </g>`;
     });
   });
@@ -5500,7 +5647,30 @@ function renderGridHeatmap(containerId, items, opts){
   document.getElementById(containerId).innerHTML = svg;
 }
 
-// Wire the view toggle buttons
+document.getElementById('heatmapAggBU')?.addEventListener('click', ()=>{
+  heatmapAggMode = 'bu';
+  document.getElementById('heatmapAggBU').classList.add('active');
+  document.getElementById('heatmapAggGroup').classList.remove('active');
+  document.getElementById('heatmapAggDesc').textContent = 'Each dot = one BU risk entry (R01-FRA, R01-IND etc.)';
+  // Re-enable BU filter — not relevant in group avg mode
+  document.getElementById('mapFilterBU').disabled = false;
+  document.getElementById('mapFilterBU').title = '';
+  renderHeatmaps();
+});
+
+document.getElementById('heatmapAggGroup')?.addEventListener('click', ()=>{
+  heatmapAggMode = 'group';
+  document.getElementById('heatmapAggGroup').classList.add('active');
+  document.getElementById('heatmapAggBU').classList.remove('active');
+  document.getElementById('heatmapAggDesc').textContent =
+    'Each dot = one universe category averaged across all BUs — use this for the Group / HQ view';
+  // BU filter is meaningless in group avg mode — disable it
+  document.getElementById('mapFilterBU').value = '';
+  document.getElementById('mapFilterBU').disabled = true;
+  document.getElementById('mapFilterBU').title = 'BU filter disabled in Group Average mode';
+  mapFilterState.bu = '';
+  renderHeatmaps();
+});
 document.getElementById('heatmapViewGradient')?.addEventListener('click', ()=>{
   heatmapViewMode = 'gradient';
   document.getElementById('heatmapViewGradient').classList.add('active');
@@ -6042,15 +6212,22 @@ async function renderSessionsTable(){
     const modeTag = s.mode === 'live'
       ? '<span class="session-status-tag open">🎙️ Live</span>'
       : '<span class="session-status-tag closed">Self-paced</span>';
+    const buTag = s.bu
+      ? `<span style="font-family:var(--font-mono); font-weight:700; font-size:12px; color:var(--navy); padding:2px 8px; background:var(--paper); border:1px solid var(--line); border-radius:12px;">${escapeXml(s.bu)}</span>`
+      : '<span style="color:var(--ink-soft); font-size:11px;">—</span>';
+    // Show consolidate button only if session has responses and a BU
+    const canConsolidate = count > 0 && s.bu;
     return `
     <tr data-session-id="${escapeXml(s.id)}">
       <td><b>${escapeXml(s.label)}</b><div style="color:var(--ink-soft); font-size:11px; margin-top:2px;">${escapeXml(s.id)}</div></td>
+      <td>${buTag}</td>
       <td>${modeTag}</td>
       <td>${dateStr}</td>
       <td><span class="badge-n">${count}</span></td>
       <td>${statusTag}</td>
       <td class="row-actions">
         <button class="icon-btn view-session-btn">View</button>
+        ${canConsolidate ? '<button class="icon-btn consolidate-session-btn" style="color:var(--systra-plum); font-weight:700;">⊕ Consolidate</button>' : ''}
         <button class="icon-btn rename-session-btn">Rename</button>
         <button class="icon-btn toggle-session-btn">${s.status === 'closed' ? 'Reopen' : 'Close'}</button>
         <button class="icon-btn danger delete-session-btn">Delete</button>
@@ -6060,6 +6237,9 @@ async function renderSessionsTable(){
 
   tbody.querySelectorAll('.view-session-btn').forEach(btn=>{
     btn.addEventListener('click', (e)=> openSessionDetail(e.target.closest('tr').dataset.sessionId));
+  });
+  tbody.querySelectorAll('.consolidate-session-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=> openConsolidationPanel(e.target.closest('tr').dataset.sessionId));
   });
   tbody.querySelectorAll('.rename-session-btn').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
@@ -6084,7 +6264,7 @@ async function renderSessionsTable(){
         ? `This session has ${count} submitted response(s). Deleting it will also permanently delete those responses. Continue?`
         : `Delete session "${s.label}"? This cannot be undone.`;
       if(confirm(warn)){
-        await Store.clear(id); // remove its responses first
+        await Store.clear(id);
         await SessionRegistry.remove(id);
         await renderSessionsTable();
         await refreshCollectTab();
@@ -6102,6 +6282,7 @@ async function renderSessionsTable(){
     });
   });
 }
+
 
 let openSessionId = null;
 
@@ -6420,6 +6601,19 @@ async function openSessionDetail(sessionId){
   const responses = await Store.getBySession(sessionId);
 
   document.getElementById('sessionDetailTitle').textContent = session.label;
+  document.getElementById('sessionDetailSub').textContent =
+    `BU: ${session.bu||'—'} · ${session.mode==='live'?'Live':'Self-paced'} · Created: ${new Date(session.createdAt).toLocaleString()}`;
+
+  // Show consolidate button if has responses and BU
+  const consolidateBtn = document.getElementById('consolidateSessionBtn');
+  if(consolidateBtn){
+    if(responses.length > 0 && session.bu){
+      consolidateBtn.style.display = '';
+    } else {
+      consolidateBtn.style.display = 'none';
+    }
+  }
+
   document.getElementById('sessionsListPanel').classList.add('hidden');
   document.getElementById('sessionDetailPanel').classList.remove('hidden');
 
@@ -6428,26 +6622,261 @@ async function openSessionDetail(sessionId){
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--ink-soft); padding:24px;">No submissions in this session yet.</td></tr>`;
     return;
   }
-  tbody.innerHTML = responses.slice().reverse().map((r,i)=>`
-    <tr>
-      <td>${escapeXml(r.name || 'Anonymous')}</td>
+  tbody.innerHTML = responses.slice().reverse().map((r,i)=>{
+    const pct = r.scores?.length ? Math.round(r.scores.length / AGG.length * 100) : 0;
+    const fillColor = pct===100?'#27AE60':pct>=50?'#F1C40F':'#E67E22';
+    return `<tr>
+      <td><b>${escapeXml(r.name || 'Anonymous')}</b></td>
       <td>${escapeXml(r.bu || '—')}</td>
       <td>${new Date(r.submittedAt).toLocaleString()}</td>
-      <td><span class="tag">${r.scores.length}</span></td>
+      <td>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="progress-bar-inline"><div class="progress-bar-fill" style="width:${pct}%; background:${fillColor};"></div></div>
+          <span style="font-family:var(--font-mono); font-size:11px;">${r.scores?.length||0} risks · ${pct}%</span>
+        </div>
+      </td>
       <td class="row-actions"><button class="icon-btn view-participant-btn" data-idx="${i}">View scores</button></td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 
   const reversedResponses = responses.slice().reverse();
   tbody.querySelectorAll('.view-participant-btn').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       const idx = Number(e.target.dataset.idx);
       const r = reversedResponses[idx];
-      const lines = r.scores.map(s=>`${s.riskId}: Likelihood ${s.likelihood}, Impact ${s.impact}, Control ${s.control}`).join('\n');
-      alert(`${r.name || 'Anonymous'} (${r.bu || 'no BU given'})\nSubmitted: ${new Date(r.submittedAt).toLocaleString()}\n\n${lines}`);
+      const lines = (r.scores||[]).map(s=>`${s.riskId}: L=${s.likelihood} · I=${s.impact} · C=${s.control}`).join('\n');
+      alert(`${r.name || 'Anonymous'} (${r.bu || 'no BU given'})\nSubmitted: ${new Date(r.submittedAt).toLocaleString()}\n\n${lines||'No scores recorded.'}`);
     });
   });
 }
+
+/* =====================================================================
+   CONSOLIDATION — converts session participant scores into risk register
+   entries. Each BU gets its own entries (R01-FRA, R02-FRA...).
+   Shows a preview table with individual scores, averages, and editable
+   final scores before applying.
+   ===================================================================== */
+
+let consolidationSessionId = null;
+let consolidationSession   = null;
+
+async function openConsolidationPanel(sessionId){
+  consolidationSessionId = sessionId;
+  const sessions = await SessionRegistry.getAll();
+  consolidationSession = sessions.find(s=>s.id===sessionId);
+  if(!consolidationSession) return;
+
+  const bu = consolidationSession.bu;
+  const responses = await Store.getBySession(sessionId);
+  if(!responses.length){
+    alert('No submissions found for this session yet.'); return;
+  }
+
+  const universe = await UniverseRegistry.getAll();
+
+  // Hide other panels, show consolidation
+  document.getElementById('sessionsListPanel').classList.add('hidden');
+  document.getElementById('sessionDetailPanel').classList.add('hidden');
+  document.getElementById('consolidationPanel').classList.remove('hidden');
+
+  document.getElementById('consolidationSub').textContent =
+    `Session: "${consolidationSession.label}" · BU: ${bu} · ${responses.length} participant(s) · ` +
+    `Averages pre-filled — adjust final scores as facilitator, then apply to register.`;
+
+  // Build: for each universe code, collect all participant scores
+  // responses[].scores = [{riskId, likelihood, impact, control}]
+  // riskId here = universe code (A1, B1...) or sequential (R01, R02...)
+  // Map participant scores by riskId
+  const scoresByRisk = new Map(); // riskId → [{name, bu, likelihood, impact, control}]
+  responses.forEach(resp=>{
+    (resp.scores||[]).forEach(s=>{
+      if(!scoresByRisk.has(s.riskId)) scoresByRisk.set(s.riskId, []);
+      scoresByRisk.get(s.riskId).push({
+        name: resp.name||'Anon',
+        bu: resp.bu||bu,
+        likelihood: s.likelihood,
+        impact: s.impact,
+        control: s.control
+      });
+    });
+  });
+
+  // Get all risk IDs that were scored
+  const scoredRiskIds = [...scoresByRisk.keys()];
+  // Get existing risks to map universe codes
+  const allRisks = await RiskRegistry.getAll();
+
+  // Build table rows — one per scored risk
+  const participantNames = [...new Set(responses.map(r=>r.name||'Anon'))];
+
+  // Build header
+  const headerRow = document.getElementById('consolidationHeaderRow');
+  headerRow.innerHTML = `
+    <th style="min-width:120px;">Risk</th>
+    <th>Title</th>
+    ${participantNames.map(n=>`<th style="font-size:10px; color:var(--ink-soft); min-width:80px;">${escapeXml(n)}<br><span style="font-weight:400;">L / I / C</span></th>`).join('')}
+    <th style="background:#EAF0FB; color:var(--navy);">Avg L</th>
+    <th style="background:#EAF0FB; color:var(--navy);">Avg I</th>
+    <th style="background:#EAF0FB; color:var(--navy);">Avg C</th>
+    <th style="background:#E8F0FE; color:var(--systra-plum); min-width:80px;">Final L ✎</th>
+    <th style="background:#E8F0FE; color:var(--systra-plum); min-width:80px;">Final I ✎</th>
+    <th style="background:#E8F0FE; color:var(--systra-plum); min-width:80px;">Final C ✎</th>`;
+
+  // Build body
+  const tbody = document.getElementById('consolidationBody');
+  tbody.innerHTML = scoredRiskIds.map(riskId=>{
+    const scores = scoresByRisk.get(riskId);
+    const avgL = scores.reduce((s,r)=>s+r.likelihood,0)/scores.length;
+    const avgI = scores.reduce((s,r)=>s+r.impact,0)/scores.length;
+    const avgC = scores.reduce((s,r)=>s+r.control,0)/scores.length;
+    const roundL = Math.round(avgL), roundI = Math.round(avgI), roundC = Math.round(avgC);
+
+    // Find existing risk title from register or universe
+    const existingRisk = allRisks.find(r=>r.id===riskId || r.riskUniverse?.startsWith(riskId+'_'));
+    const uEntry = universe.find(u=>u.code===riskId || riskId.startsWith(u.code+'_'));
+    const title = existingRisk?.title || uEntry?.label || riskId;
+
+    // Participant score cells
+    const pCells = participantNames.map(name=>{
+      const ps = scores.find(s=>s.name===name);
+      return ps
+        ? `<td style="font-family:var(--font-mono); font-size:11px; text-align:center; white-space:nowrap;">${ps.likelihood} / ${ps.impact} / ${ps.control}</td>`
+        : `<td style="color:var(--ink-soft); text-align:center; font-size:11px;">—</td>`;
+    }).join('');
+
+    // Zone colour for inherent avg
+    const inhAvg = avgL * avgI;
+    const zoneCol = inhAvg>=12?'#FDECEA':inhAvg>=9?'#FEF3E7':inhAvg>=4?'#FFFDE7':'#E8F8EF';
+
+    return `<tr data-risk-id="${escapeXml(riskId)}" style="background:${zoneCol}08;">
+      <td style="font-family:var(--font-mono); font-weight:700;">${escapeXml(riskId)}</td>
+      <td style="font-size:12px; max-width:200px;">${escapeXml(title)}</td>
+      ${pCells}
+      <td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgL.toFixed(1)}</td>
+      <td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgI.toFixed(1)}</td>
+      <td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgC.toFixed(1)}</td>
+      <td style="background:#E8F0FE; text-align:center; padding:4px;">
+        <select class="final-l" style="width:60px; font-size:12px; text-align:center; border:1px solid var(--systra-plum); border-radius:4px;">
+          ${[1,2,3,4].map(v=>`<option value="${v}" ${v===roundL?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </td>
+      <td style="background:#E8F0FE; text-align:center; padding:4px;">
+        <select class="final-i" style="width:60px; font-size:12px; text-align:center; border:1px solid var(--systra-plum); border-radius:4px;">
+          ${[1,2,3,4].map(v=>`<option value="${v}" ${v===roundI?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </td>
+      <td style="background:#E8F0FE; text-align:center; padding:4px;">
+        <select class="final-c" style="width:60px; font-size:12px; text-align:center; border:1px solid var(--systra-plum); border-radius:4px;">
+          ${[1,2,3,4].map(v=>`<option value="${v}" ${v===roundC?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+document.getElementById('cancelConsolidationBtn')?.addEventListener('click', ()=>{
+  document.getElementById('consolidationPanel').classList.add('hidden');
+  document.getElementById('sessionsListPanel').classList.remove('hidden');
+});
+
+document.getElementById('applyConsolidationBtn')?.addEventListener('click', async ()=>{
+  if(!consolidationSession) return;
+  const bu = consolidationSession.bu;
+
+  // Collect final scores from the table
+  const rows = document.querySelectorAll('#consolidationBody tr[data-risk-id]');
+  if(!rows.length){ alert('Nothing to apply.'); return; }
+
+  if(!confirm(`Apply ${rows.length} risk scores to the register for BU: ${bu}?\n\nFirst-time BU: creates new entries (R01-${bu}, R02-${bu}...)\nExisting BU: updates scores and saves history.`)) return;
+
+  const allRisks = await RiskRegistry.getAll();
+  const universe = await UniverseRegistry.getAll();
+  const now = new Date().toISOString();
+
+  // Find existing BU risks and determine next sequence number
+  const buRisks = allRisks.filter(r=>r.bu===bu);
+  const buNums  = buRisks.map(r=>{
+    const m = /^R(\d+)-/.exec(r.id);
+    return m ? parseInt(m[1],10) : 0;
+  });
+  let nextNum = buNums.length ? Math.max(...buNums) : 0;
+
+  const updates = [];
+  rows.forEach(row=>{
+    const riskId   = row.dataset.riskId;
+    const finalL   = parseInt(row.querySelector('.final-l').value);
+    const finalI   = parseInt(row.querySelector('.final-i').value);
+    const finalC   = parseInt(row.querySelector('.final-c').value);
+
+    // Find existing register entry for this BU+universe combo
+    const existing = allRisks.find(r=>
+      r.bu===bu && (r.riskUniverse?.startsWith(riskId+'_') || r.id===riskId)
+    );
+
+    // Find universe entry for metadata
+    const uEntry = universe.find(u=>u.code===riskId);
+
+    if(existing){
+      // UPDATE — save old scores to history before overwriting
+      const history = existing.scoreHistory || [];
+      history.push({
+        sessionId: consolidationSessionId,
+        sessionLabel: consolidationSession.label,
+        date: now,
+        likelihoodScore: existing.likelihoodScore,
+        impactScore: existing.impactScore,
+        controlScore: existing.controlScore
+      });
+      updates.push({
+        ...existing,
+        likelihoodScore: finalL,
+        impactScore: finalI,
+        controlScore: finalC,
+        scoreHistory: history,
+        lastUpdated: now,
+        lastSessionId: consolidationSessionId
+      });
+    } else {
+      // CREATE — new entry for this BU
+      nextNum++;
+      const newId = `R${String(nextNum).padStart(2,'0')}-${bu}`;
+      updates.push({
+        id: newId,
+        title: uEntry?.label || riskId,
+        bu,
+        riskUniverse: uEntry ? `${uEntry.code}_${uEntry.label}` : riskId,
+        groupFamily: '',
+        description: '',
+        owner: '',
+        status: 'Ongoing',
+        likelihoodScore: finalL,
+        impactScore: finalI,
+        controlScore: finalC,
+        scoreHistory: [],
+        lastUpdated: now,
+        lastSessionId: consolidationSessionId
+      });
+    }
+  });
+
+  // Upsert all
+  for(const r of updates){
+    await RiskRegistry.upsert(r);
+  }
+
+  document.getElementById('consolidationPanel').classList.add('hidden');
+  document.getElementById('sessionsListPanel').classList.remove('hidden');
+  await refreshDashboard();
+
+  alert(`✓ ${updates.length} risks applied to the register for BU: ${bu}.\n` +
+    `${updates.filter(r=>r.scoreHistory?.length===0).length} new entries created.\n` +
+    `${updates.filter(r=>r.scoreHistory?.length>0).length} existing entries updated (history saved).`);
+});
+
+// Also wire the consolidate button from session detail view
+document.getElementById('consolidateSessionBtn')?.addEventListener('click', ()=>{
+  if(openSessionId) openConsolidationPanel(openSessionId);
+});
 
 document.getElementById('closeSessionDetailBtn')?.addEventListener('click', ()=>{
   document.getElementById('sessionDetailPanel').classList.add('hidden');
@@ -7706,8 +8135,11 @@ let pendingImportRows = [];
 
 document.getElementById('downloadImportTemplateBtn')?.addEventListener('click', ()=>{
   const headers = ['Risk ID','Title','Description','Group Family','Risk Universe','BU','Owner','Status','Likelihood','Impact','Control'];
-  const example = ['', 'Example: New supplier dependency risk', 'Brief description of the risk goes here.', 'G2_Operational / Financial shortfall', 'D4_Third-party management: partners, subcontractors, suppliers, and freelancers', 'FRA', 'Jane Doe', 'Ongoing', 'Possible', 'Medium', 'Defined'];
-  downloadCsv('ERM-Import-Template.csv', [headers, example]);
+  const ex1 = ['R01-FRA','Cash generation and financial shortfall','Risk of insufficient cash flow...','G2_Operational / Financial shortfall','D5_Foreign exchange and interest rate risk','FRA','Jean Dupont','Ongoing','Possible','High','Defined'];
+  const ex2 = ['R01-IND','Cash generation and financial shortfall','Risk of insufficient cash flow...','G2_Operational / Financial shortfall','D5_Foreign exchange and interest rate risk','IND','Priya Sharma','Ongoing','Rare','Medium','Informal'];
+  const ex3 = ['','New risk — ID auto-generated from BU','Description here.','G3_Damaged Image','C7_Cybersecurity attacks and system compromise','UKI','Owner Name','Ongoing','Possible','Critical','Managed & Monitored'];
+  const note = ['NOTE: Risk ID format is R01-BU (e.g. R01-FRA, R02-FRA). Leave blank to auto-generate. Same universe row per BU = separate register entries.','','','','','','','','','',''];
+  downloadCsv('ERM-Import-Template.csv', [headers, ex1, ex2, ex3, note]);
 });
 
 function handleImportFile(file){
@@ -7716,33 +8148,70 @@ function handleImportFile(file){
     try{
       const data = new Uint8Array(e.target.result);
       const wb = XLSX.read(data, {type:'array'});
-      const sheetName = wb.SheetNames.find(n=>/working|risk|register/i.test(n)) || wb.SheetNames[0];
+      // Try to find the right sheet
+      const sheetName = wb.SheetNames.find(n=>/working|risk.?register/i.test(n)) || wb.SheetNames[0];
       const sheet = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:''});
-      if(!rows.length) throw new Error('File appears empty.');
+      const allRows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:''});
+      if(!allRows.length) throw new Error('File appears empty.');
 
+      // Find the actual header row — look for a row containing "Title" or "Risk ID"
+      // (your Excel has 3 rows above the actual headers)
+      let headerRowIdx = 0;
+      for(let i = 0; i < Math.min(10, allRows.length); i++){
+        const rowStr = allRows[i].map(c=>String(c||'').toLowerCase()).join('|');
+        if(rowStr.includes('title') || rowStr.includes('risk id') || rowStr.includes('likelihood')){
+          headerRowIdx = i;
+          break;
+        }
+      }
+
+      const rows = allRows.slice(headerRowIdx); // header row first, then data
       const headerRow = rows[0].map(normHeader);
       const headerIndex = {};
       headerRow.forEach((h,i)=>{ if(h) headerIndex[h] = i; });
 
       const existing = await RiskRegistry.getAll();
-      const dataRows = rows.slice(1).filter(r => r.some(c => String(c).trim() !== ''));
-
-      // Pre-compute a running "next available ID" counter for rows with no ID supplied,
-      // so multiple blank-ID rows in one file don't collide with each other or existing risks.
-      const existingNums = existing.map(r=>{
-        const m = /^R(\d+)$/.exec(r.id);
-        return m ? parseInt(m[1],10) : 0;
+      const dataRows = rows.slice(1).filter(r => {
+        // Must have at least a non-empty title (col B in your register = index 1 if ID is col 0)
+        // Filter out rows where all meaningful columns are blank
+        const titleIdx = headerIndex['title'] ?? headerIndex['risk title'] ?? 1;
+        const titleVal = String(r[titleIdx]||'').trim();
+        // Skip rows where title is blank or looks like a formula-generated ID placeholder
+        if(!titleVal || /^R\d+(-[A-Z]+)?$/.test(titleVal)) return false;
+        return r.some(c => String(c).trim() !== '');
       });
-      let runningMax = existingNums.length ? Math.max(...existingNums) : 0;
+
+      // Pre-compute per-BU sequence counters so auto-generated IDs follow R01-FRA format
+      // Also handle plain R01 format for backward compatibility
+      const buCounters = {};  // bu → highest sequence number seen
+      existing.forEach(r=>{
+        // Match R01-FRA or R01-IND format
+        const buMatch = /^R(\d+)-([A-Z]+)$/i.exec(r.id);
+        if(buMatch){
+          const bu = buMatch[2].toUpperCase();
+          const num = parseInt(buMatch[1],10);
+          if(!buCounters[bu] || num > buCounters[bu]) buCounters[bu] = num;
+        }
+        // Match plain R01 format
+        const plainMatch = /^R(\d+)$/.exec(r.id);
+        if(plainMatch){
+          const num = parseInt(plainMatch[1],10);
+          if(!buCounters[''] || num > buCounters['']) buCounters[''] = num;
+        }
+      });
 
       pendingImportRows = dataRows.map((r)=>{
         const headerRowHasId = Object.keys(headerIndex).some(h => IMPORT_COLUMN_MAP.id.includes(h));
         const rawId = headerRowHasId ? r[headerIndex[Object.keys(headerIndex).find(h=>IMPORT_COLUMN_MAP.id.includes(h))]] : '';
         let fallbackId = null;
         if(!rawId || String(rawId).trim()===''){
-          runningMax += 1;
-          fallbackId = 'R' + String(runningMax).padStart(2,'0');
+          // Get BU from this row to generate correct format
+          const rowBu = String(r[headerIndex['bu']]||r[headerIndex['business unit']]||'').trim().toUpperCase();
+          const key = rowBu || '';
+          buCounters[key] = (buCounters[key] || 0) + 1;
+          fallbackId = rowBu
+            ? 'R' + String(buCounters[key]).padStart(2,'0') + '-' + rowBu
+            : 'R' + String(buCounters[key]).padStart(2,'0');
         }
         return mapRowToRisk(r, headerIndex, fallbackId);
       });
@@ -8121,16 +8590,31 @@ document.getElementById('activeSessionSelect')?.addEventListener('change', async
 });
 
 document.getElementById('newSessionBtn')?.addEventListener('click', async ()=>{
-  const label = prompt('Name this session (e.g. "Paris Workshop — June 2026"):', '');
+  // Build BU list for the dialog
+  const buList = JSON.parse(localStorage.getItem('erm_bus_v1')||'null') || SEED_BUS;
+
+  const label = prompt('Name this session (e.g. "France ERM Workshop — June 2026"):', '');
   if(label === null) return;
-  const liveMode = confirm(
-    'Click OK for a LIVE facilitator-paced session — you control which risk is being scored, and everyone\'s screen advances together.\n\n' +
-    'Click Cancel for a SELF-PACED session — participants score all risks at their own speed, like today.'
+
+  const bu = prompt(
+    `Which BU is this workshop for?\nAvailable BUs: ${buList.join(', ')}\n\n(Leave blank if multi-BU or global session)`,
+    ''
   );
-  const session = await SessionRegistry.create(label, liveMode ? 'live' : 'selfpaced');
+  if(bu === null) return;
+
+  const liveMode = confirm(
+    'Click OK for a LIVE facilitator-paced session — you control which risk is being scored.\n\n' +
+    'Click Cancel for a SELF-PACED session — participants score at their own speed.'
+  );
+
+  const session = await SessionRegistry.create(
+    label,
+    liveMode ? 'live' : 'selfpaced',
+    bu.trim().toUpperCase()
+  );
   activeSessionId = session.id;
   await refreshCollectTab();
-  alert(`Session "${session.label}" created (${session.mode === 'live' ? 'Live, facilitator-paced' : 'Self-paced'}). Its QR code and link are ready below.`);
+  alert(`Session "${session.label}"${session.bu ? ' (BU: '+session.bu+')' : ''} created. QR code and link are ready below.`);
 });
 
 document.getElementById('goToSessionsBtn')?.addEventListener('click', ()=>{

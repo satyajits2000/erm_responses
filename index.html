@@ -692,13 +692,16 @@ table.risk-table select.score-select{
           <h2>Risk Register</h2>
           <div class="sub">All risks with live averaged scores. Click a column header to sort.</div>
         </div>
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn ghost sm" id="addRiskRegisterBtn">+ Add new risk</button>
           <button class="btn ghost sm" id="exportCsvBtn">Export CSV</button>
           <button class="btn sm" id="exportEverythingBtn">Export Everything (CSV + Heat Maps)</button>
+          <button class="btn danger sm" id="bulkDeleteBtn" style="display:none;">🗑 Delete selected (<span id="bulkDeleteCount">0</span>)</button>
         </div>
       </div>
       <div class="toolbar">
+        <input type="checkbox" id="selectAllRisks" title="Select all visible risks" style="width:16px;height:16px;cursor:pointer;">
+        <label for="selectAllRisks" style="font-size:12px; color:var(--ink-soft); cursor:pointer;">Select all</label>
         <input type="text" id="filterSearch" placeholder="Search title, owner, BU…">
         <select id="filterFamily"><option value="">All Group Families</option></select>
         <select id="filterBU"><option value="">All Business Units</option></select>
@@ -707,6 +710,7 @@ table.risk-table select.score-select{
       <div style="overflow-x:auto;">
         <table class="risk-table" id="riskTable">
           <thead><tr>
+            <th style="width:32px;"></th>
             <th data-key="id">ID</th>
             <th data-key="title">Title</th>
             <th data-key="riskUniverse">Risk Universe</th>
@@ -5434,34 +5438,21 @@ function renderHeatmaps(){
   }
 
   if(heatmapViewMode === 'grid'){
-    // Determine which fields to use based on layer toggle
-    let xField = 'likelihoodAvg', yField = 'impactAvg';
-    if(gridLayerMode === 'residual'){
-      // Residual: use control-adjusted scores
-      xField = 'likelihoodAvg'; yField = 'impactAvg';
-    } else if(gridLayerMode === 'target'){
-      xField = 'targetLikelihoodScore'; yField = 'targetImpactScore';
-    }
+    // LEFT MAP — always shows Inherent Risk (Likelihood × Impact)
+    // When Target layer selected, shows target positions instead
+    const leftXField = gridLayerMode === 'target' ? 'targetLikelihoodScore' : 'likelihoodAvg';
+    const leftYField = gridLayerMode === 'target' ? 'targetImpactScore' : 'impactAvg';
 
     renderGridHeatmap('inherentMap', filtered, {
-      xField, yField,
+      xField: leftXField,
+      yField: leftYField,
       xLabels: SCALES.Likelihood.map(e=>e.l),
       yLabels: SCALES.Impact.map(e=>e.l),
       xTitle: gridLayerMode === 'target' ? 'Target Likelihood' : 'Likelihood',
       yTitle: gridLayerMode === 'target' ? 'Target Impact' : 'Impact',
-      steps:4,
+      steps: 4,
       layerMode: gridLayerMode,
-      zoneFor:(x,y)=> {
-        // For residual, weight by control: better control = lower effective zone
-        if(gridLayerMode === 'residual'){
-          return (r => {
-            const p = x*y;
-            if(p<=2) return 'low';
-            if(p<=6) return 'moderate';
-            if(p<=9) return 'high';
-            return 'critical';
-          })();
-        }
+      zoneFor: (x,y) => {
         const p = x*y;
         if(p<=2) return 'low';
         if(p<=6) return 'moderate';
@@ -5469,15 +5460,19 @@ function renderHeatmaps(){
         return 'critical';
       }
     });
-    // Residual second map stays the same
+
+    // RIGHT MAP — always shows Residual (Control Level vs Inherent Risk Level)
+    // Highlighted differently when "Residual Risk" layer is active
     renderGridHeatmap('residualMap', filtered, {
-      xField:'controlAvg', yField:'inherentAvg',
+      xField: 'controlAvg',
+      yField: 'inherentAvg',
       xLabels: SCALES.Control.map(e=>e.l).reverse(),
-      yLabels:['Low','Medium','High','Critical'],
-      xTitle:'Control Level', yTitle:'Inherent Risk Level',
-      steps:4,
+      yLabels: ['Low','Medium','High','Critical'],
+      xTitle: 'Control Level',
+      yTitle: 'Inherent Risk Level',
+      steps: 4,
       xInvert: true,
-      zoneFor:(xRaw,yRaw,xInvert)=>{
+      zoneFor: (xRaw,yRaw,xInvert) => {
         const ctrl = xInvert ? (5-xRaw) : xRaw;
         const inh = yRaw;
         const p = ctrl * inh;
@@ -5776,6 +5771,10 @@ function renderTable(){
   const tbody = document.querySelector('#riskTable tbody');
   tbody.innerHTML = rows.map(r=>`
     <tr data-risk-id="${escapeXml(r.id)}" style="cursor:pointer;">
+      <td style="text-align:center;" onclick="event.stopPropagation();">
+        <input type="checkbox" class="risk-select-cb" data-id="${escapeXml(r.id)}"
+          style="width:15px;height:15px;cursor:pointer;" onclick="event.stopPropagation(); updateBulkDeleteBtn();">
+      </td>
       <td><span class="tag">${r.id}</span></td>
       <td style="min-width:160px;"><b>${escapeXml(r.title)}</b></td>
       <td style="min-width:140px; font-size:12px; color:var(--ink-soft);">${escapeXml(r.riskUniverse)}</td>
@@ -6443,12 +6442,22 @@ async function startLiveListener(sessionId){
   liveSelectedSessionId = sessionId;
   const dot = document.getElementById('liveConnectionDot');
   const label = document.getElementById('liveConnectionLabel');
-  const risks = await RiskRegistry.getAll();
+  const allRisks = await RiskRegistry.getAll();
 
   const sessions = await SessionRegistry.getAll();
   const session = sessions.find(s=>s.id===sessionId);
+
+  // Use the risk count from the universe (all risks that should be scored)
+  // NOT the full register count (which includes multiple BU entries for same universe)
+  // For a BU session, count = universe size. For legacy sessions = all risks.
+  const sessionBU = session?.bu || '';
+  const sessionRisks = sessionBU
+    ? allRisks.filter(r=>r.bu===sessionBU)  // BU-specific risks
+    : allRisks;
+  const risks = sessionRisks.length > 0 ? sessionRisks : allRisks;
+
   if(session && session.mode === 'live'){
-    await startLiveCurrentRiskPanel(sessionId, risks);
+    await startLiveCurrentRiskPanel(sessionId, allRisks);
   }
 
   if(storeBackend === FirebaseStore && fbDb){
@@ -6493,10 +6502,26 @@ async function startLiveListener(sessionId){
         });
 
         // Submitted participants supersede in-progress ones
-        const submittedKeys = new Set(submittedResponses.map(r=>r.participantKey||r.name));
-        const inProgressOnly = [...inProgressMap.values()].filter(p=>!submittedKeys.has(p.participantKey));
+        // Deduplicate by both participantKey AND name (name fallback handles cases
+        // where the participant opened the form twice with different keys)
+        const submittedKeys = new Set([
+          ...submittedResponses.map(r=>r.participantKey).filter(Boolean),
+          ...submittedResponses.map(r=>r.name).filter(Boolean)
+        ]);
+        const inProgressOnly = [...inProgressMap.values()].filter(p=>
+          !submittedKeys.has(p.participantKey) && !submittedKeys.has(p.name)
+        );
 
-        const combined = [...submittedResponses, ...inProgressOnly];
+        // Also deduplicate within inProgressOnly by name (same person, two browser tabs)
+        const seenNames = new Set();
+        const dedupedInProgress = inProgressOnly.filter(p=>{
+          const key = p.name || p.participantKey;
+          if(seenNames.has(key)) return false;
+          seenNames.add(key);
+          return true;
+        });
+
+        const combined = [...submittedResponses, ...dedupedInProgress];
         renderLiveStats(combined, risks.length);
       }
 
@@ -6762,112 +6787,160 @@ async function openConsolidationPanel(sessionId){
 
   // Get all risk IDs that were scored
   const scoredRiskIds = new Set(scoresByRisk.keys());
-  // Get existing risks to map universe codes
   const allRisks = await RiskRegistry.getAll();
 
-  // Build the FULL list of risks to show — use ALL risks in register
-  // (not just the ones that were scored) so facilitator can see gaps
-  const allRiskIds = allRisks.map(r=>r.id);
+  // Build the list of risks to consolidate against:
+  // Use the UNIVERSE as the template (each universe entry = one row to score)
+  // NOT all existing register entries (that would include other BU entries)
+  // Map universe codes to register entries where they exist for this BU
+  const universeRiskIds = universe.map(u=>u.code);
 
-  // Count how many risks each participant scored
+  // Also include any risk IDs that were actually scored but aren't in universe
+  // (handles cases where riskIds in responses are register IDs like R01, R02...)
+  const allScoredIds = [...scoredRiskIds];
+  // If scored IDs look like register IDs (R01, R02...) map them to universe codes via existing risks
+  const riskIdToUniverse = new Map();
+  allRisks.forEach(r=>{
+    if(r.riskUniverse){
+      const uCode = r.riskUniverse.split('_')[0];
+      riskIdToUniverse.set(r.id, uCode);
+    }
+  });
+
+  // Determine the base list: prefer universe codes, fall back to scored IDs if they're not universe codes
+  const isUniverseCode = (id) => universe.some(u=>u.code===id);
+  const useUniverseAsBase = allScoredIds.some(id=>isUniverseCode(id)) || allScoredIds.length === 0;
+
+  const baseRiskIds = useUniverseAsBase
+    ? universeRiskIds  // scored by universe code — standard flow
+    : allScoredIds;    // scored by register ID — older session format
+
+  const totalRisks = baseRiskIds.length;
+  const missedCount = baseRiskIds.filter(id=>!scoredRiskIds.has(id)).length;
   const participantNames = [...new Set(responses.map(r=>r.name||'Anon'))];
-  const totalRisks = allRiskIds.length;
-  const missedCount = allRiskIds.filter(id=>!scoredRiskIds.has(id)).length;
 
   // Sub-header showing coverage summary
   document.getElementById('consolidationSub').innerHTML =
     `Session: "<b>${escapeXml(consolidationSession.label)}</b>" · BU: <b>${escapeXml(bu)}</b> · ` +
     `${responses.length} participant(s) · ${totalRisks} risks total · ` +
     `<span style="color:${missedCount>0?'#E67E22':'#27AE60'}; font-weight:700;">` +
-    `${missedCount > 0 ? '⚠ '+missedCount+' risk(s) not scored by any participant — facilitator score required' : '✓ All risks scored'}</span><br>` +
-    `<span style="font-size:11px; color:var(--ink-soft);">Blue columns = your final score (pre-filled with average). ` +
-    `Yellow rows = missed by at least one participant. Red rows = not scored by anyone — enter facilitator score.</span>`;
+    `${missedCount > 0 ? '⚠ '+missedCount+' risk(s) not scored by anyone — facilitator score required' : '✓ All risks scored'}</span>`;
 
-  // Build header
+  // ── Build header ─────────────────────────────────────────────────
+  // Structure: Universe Code | Title | [Participant name: L | I | C] × N | Avg L | Avg I | Avg C | Final L ✎ | Final I ✎ | Final C ✎
   const headerRow = document.getElementById('consolidationHeaderRow');
-  headerRow.innerHTML = `
-    <th style="min-width:60px;">Risk ID</th>
-    <th style="min-width:180px;">Title</th>
-    <th style="min-width:80px; background:#F8F9FA;">Coverage</th>
-    ${participantNames.map(n=>`<th style="font-size:10px; color:var(--ink-soft); min-width:80px; text-align:center;">${escapeXml(n)}<br><span style="font-weight:400;">L / I / C</span></th>`).join('')}
-    <th style="background:#EAF0FB; color:var(--navy); min-width:60px;">Avg L</th>
-    <th style="background:#EAF0FB; color:var(--navy); min-width:60px;">Avg I</th>
-    <th style="background:#EAF0FB; color:var(--navy); min-width:60px;">Avg C</th>
-    <th style="background:#E8F0FE; color:var(--systra-plum); min-width:80px;">Final L ✎</th>
-    <th style="background:#E8F0FE; color:var(--systra-plum); min-width:80px;">Final I ✎</th>
-    <th style="background:#E8F0FE; color:var(--systra-plum); min-width:80px;">Final C ✎</th>`;
 
-  // Build body — one row per risk in register
+  // Group header row (spans)
+  const pGroupCols = participantNames.map(n=>
+    `<th colspan="3" style="text-align:center; background:#F0F4F8; color:var(--navy); font-size:11px; border-left:2px solid #CBD5E0; padding:6px 4px; min-width:180px;">`+
+    `<div style="font-weight:700; font-size:12px;">${escapeXml(n)}</div>`+
+    `<div style="font-weight:400; color:var(--ink-soft); font-size:10px;">Participant score</div></th>`
+  ).join('');
+
+  // Sub-header row (L/I/C labels under each participant + avg + final)
+  const pSubCols = participantNames.map(()=>
+    `<th style="background:#F4F7FA; color:var(--ink-soft); font-size:10px; text-align:center; border-left:2px solid #CBD5E0; width:44px; padding:4px 2px;">L</th>`+
+    `<th style="background:#F4F7FA; color:var(--ink-soft); font-size:10px; text-align:center; width:44px; padding:4px 2px;">I</th>`+
+    `<th style="background:#F4F7FA; color:var(--ink-soft); font-size:10px; text-align:center; width:44px; padding:4px 2px;">C</th>`
+  ).join('');
+
+  headerRow.innerHTML =
+    `<th rowspan="2" style="min-width:70px; vertical-align:middle;">Universe</th>`+
+    `<th rowspan="2" style="min-width:180px; vertical-align:middle;">Risk Title</th>`+
+    `<th rowspan="2" style="min-width:80px; background:#F8F9FA; vertical-align:middle; text-align:center;">Coverage</th>`+
+    pGroupCols +
+    `<th colspan="3" style="text-align:center; background:#DDEEFF; color:var(--navy); font-size:11px; border-left:3px solid #6699CC; padding:6px 4px;">`+
+    `<div style="font-weight:700; font-size:12px;">Group Average</div><div style="font-weight:400; font-size:10px; color:var(--ink-soft);">Auto-calculated</div></th>`+
+    `<th colspan="3" style="text-align:center; background:#EDE0F5; color:var(--systra-plum); font-size:11px; border-left:3px solid var(--systra-plum); padding:6px 4px;">`+
+    `<div style="font-weight:700; font-size:12px;">Facilitator Final ✎</div><div style="font-weight:400; font-size:10px;">Edit if needed, then apply</div></th>`;
+
+  // Insert a second header row for L/I/C sub-labels
+  const thead = document.getElementById('consolidationTable').querySelector('thead');
+  // Remove any existing second header row
+  const existingSubRow = thead.querySelector('tr.consolidation-subrow');
+  if(existingSubRow) existingSubRow.remove();
+  const subRow = document.createElement('tr');
+  subRow.className = 'consolidation-subrow';
+  subRow.innerHTML =
+    pSubCols +
+    `<th style="background:#D8EEFF; color:#2255AA; font-size:10px; text-align:center; border-left:3px solid #6699CC; width:44px; padding:4px 2px;">L</th>`+
+    `<th style="background:#D8EEFF; color:#2255AA; font-size:10px; text-align:center; width:44px; padding:4px 2px;">I</th>`+
+    `<th style="background:#D8EEFF; color:#2255AA; font-size:10px; text-align:center; width:44px; padding:4px 2px;">C</th>`+
+    `<th style="background:#E8D8F8; color:var(--systra-plum); font-size:10px; text-align:center; border-left:3px solid var(--systra-plum); width:56px; padding:4px 2px;">L</th>`+
+    `<th style="background:#E8D8F8; color:var(--systra-plum); font-size:10px; text-align:center; width:56px; padding:4px 2px;">I</th>`+
+    `<th style="background:#E8D8F8; color:var(--systra-plum); font-size:10px; text-align:center; width:56px; padding:4px 2px;">C</th>`;
+  thead.appendChild(subRow);
+
+  // ── Build body ────────────────────────────────────────────────────
   const tbody = document.getElementById('consolidationBody');
-  tbody.innerHTML = allRiskIds.map(riskId=>{
+  tbody.innerHTML = baseRiskIds.map(riskId=>{
     const scores = scoresByRisk.get(riskId) || [];
     const scoredCount = scores.length;
     const totalPart = participantNames.length;
-    const missedBy = participantNames.filter(n=>!scores.find(s=>s.name===n));
     const allMissed = scoredCount === 0;
-    const someMissed = scoredCount > 0 && missedBy.length > 0;
+    const someMissed = scoredCount > 0 && scoredCount < totalPart;
 
-    // Averages (use 2 as default if no scores)
+    // Averages
     const avgL = scoredCount ? scores.reduce((s,r)=>s+r.likelihood,0)/scoredCount : 2;
     const avgI = scoredCount ? scores.reduce((s,r)=>s+r.impact,0)/scoredCount : 2;
     const avgC = scoredCount ? scores.reduce((s,r)=>s+r.control,0)/scoredCount : 2;
     const roundL = Math.round(avgL), roundI = Math.round(avgI), roundC = Math.round(avgC);
 
-    // Find title
-    const existingRisk = allRisks.find(r=>r.id===riskId);
-    const uEntry = universe.find(u=>u.code===riskId || riskId.startsWith(u.code+'_') ||
-                                    existingRisk?.riskUniverse?.startsWith(u.code+'_'));
-    const title = existingRisk?.title || uEntry?.label || riskId;
+    // Title from universe
+    const uEntry = universe.find(u=>u.code===riskId);
+    const existingRisk = allRisks.find(r=>r.riskUniverse?.startsWith(riskId+'_') || r.id===riskId);
+    const title = uEntry?.label || existingRisk?.title || riskId;
 
-    // Row background
-    const rowBg = allMissed ? '#FFF3CD' : someMissed ? '#FFF8F0' : 'transparent';
-    const rowBorder = allMissed ? 'border-left:4px solid #E67E22;' : someMissed ? 'border-left:3px solid #F1C40F;' : '';
+    // Row styling
+    const rowBg = allMissed ? '#FFF3CD' : someMissed ? '#FFFBF0' : '';
+    const rowBorder = allMissed ? 'border-left:4px solid #E67E22;' : someMissed ? 'border-left:3px solid #F1C40F;' : 'border-left:3px solid transparent;';
 
     // Coverage badge
     const coverageBadge = allMissed
-      ? `<span style="font-size:10px; font-weight:700; padding:2px 6px; background:#FDECEA; color:#E74C3C; border-radius:10px;">✗ Not scored</span>`
+      ? `<span style="font-size:10px;font-weight:700;padding:2px 6px;background:#FDECEA;color:#E74C3C;border-radius:10px;">✗ None</span>`
       : someMissed
-      ? `<span style="font-size:10px; font-weight:700; padding:2px 6px; background:#FEF3E7; color:#E67E22; border-radius:10px;">⚠ ${scoredCount}/${totalPart}</span>`
-      : `<span style="font-size:10px; font-weight:700; padding:2px 6px; background:#E8F8EF; color:#27AE60; border-radius:10px;">✓ ${scoredCount}/${totalPart}</span>`;
+      ? `<span style="font-size:10px;font-weight:700;padding:2px 6px;background:#FEF3E7;color:#E67E22;border-radius:10px;">⚠ ${scoredCount}/${totalPart}</span>`
+      : `<span style="font-size:10px;font-weight:700;padding:2px 6px;background:#E8F8EF;color:#27AE60;border-radius:10px;">✓ ${scoredCount}/${totalPart}</span>`;
 
-    // Participant cells
-    const pCells = participantNames.map(name=>{
+    // Per-participant score cells — 3 cells per participant (L, I, C)
+    const pCells = participantNames.map((name,pi)=>{
       const ps = scores.find(s=>s.name===name);
-      return ps
-        ? `<td style="font-family:var(--font-mono); font-size:11px; text-align:center; white-space:nowrap;">${ps.likelihood} / ${ps.impact} / ${ps.control}</td>`
-        : `<td style="text-align:center; font-size:11px;"><span style="color:#E74C3C; font-weight:700;" title="${escapeXml(name)} did not score this risk">✗ missed</span></td>`;
+      const borderLeft = pi===0 ? 'border-left:2px solid #CBD5E0;' : 'border-left:2px solid #CBD5E0;';
+      if(ps){
+        const lCol = ps.likelihood>=4?'#E74C3C':ps.likelihood>=3?'#E67E22':'var(--navy)';
+        const iCol = ps.impact>=4?'#E74C3C':ps.impact>=3?'#E67E22':'var(--navy)';
+        const cCol = ps.control>=3?'#27AE60':ps.control>=2?'#E67E22':'#E74C3C';
+        return `<td style="${borderLeft}text-align:center;font-family:var(--font-mono);font-size:12px;font-weight:700;color:${lCol};">${ps.likelihood}</td>`+
+               `<td style="text-align:center;font-family:var(--font-mono);font-size:12px;font-weight:700;color:${iCol};">${ps.impact}</td>`+
+               `<td style="text-align:center;font-family:var(--font-mono);font-size:12px;font-weight:700;color:${cCol};">${ps.control}</td>`;
+      }
+      return `<td style="${borderLeft}text-align:center;color:#E74C3C;font-size:11px;font-weight:700;" title="${escapeXml(name)} missed this risk">✗</td>`+
+             `<td style="text-align:center;color:#E74C3C;font-size:11px;">✗</td>`+
+             `<td style="text-align:center;color:#E74C3C;font-size:11px;">✗</td>`;
     }).join('');
 
-    // Avg cells — show "Facilitator" label if no scores at all
-    const avgDisplay = allMissed
-      ? `<td colspan="3" style="background:#FFF3CD; text-align:center; font-size:11px; color:#856404; font-style:italic;">No participant scores — set facilitator score →</td>`
-      : `<td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgL.toFixed(1)}</td>
-         <td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgI.toFixed(1)}</td>
-         <td style="background:#EAF0FB; text-align:center; font-weight:700; font-family:var(--font-mono);">${avgC.toFixed(1)}</td>`;
+    // Avg cells
+    const avgCells = allMissed
+      ? `<td colspan="3" style="background:#FFF3CD;text-align:center;font-size:11px;color:#856404;font-style:italic;border-left:3px solid #6699CC;">No scores — set below →</td>`
+      : `<td style="background:#D8EEFF;text-align:center;font-weight:700;font-family:var(--font-mono);font-size:12px;border-left:3px solid #6699CC;">${avgL.toFixed(1)}</td>`+
+        `<td style="background:#D8EEFF;text-align:center;font-weight:700;font-family:var(--font-mono);font-size:12px;">${avgI.toFixed(1)}</td>`+
+        `<td style="background:#D8EEFF;text-align:center;font-weight:700;font-family:var(--font-mono);font-size:12px;">${avgC.toFixed(1)}</td>`;
 
-    const selectStyle = `width:60px; font-size:12px; text-align:center; border:1.5px solid ${allMissed?'#E67E22':'var(--systra-plum)'}; border-radius:4px; background:${allMissed?'#FFF8F0':'#fff'};`;
+    // Final score dropdowns
+    const selStyle = `width:52px;font-size:12px;text-align:center;border:1.5px solid ${allMissed?'#E67E22':'var(--systra-plum)'};border-radius:4px;padding:2px;`;
+    const finalCells =
+      `<td style="background:#EDE0F5;text-align:center;padding:3px;border-left:3px solid var(--systra-plum);">`+
+      `<select class="final-l" style="${selStyle}">${[1,2,3,4].map(v=>`<option value="${v}"${v===roundL?' selected':''}>${v}</option>`).join('')}</select></td>`+
+      `<td style="background:#EDE0F5;text-align:center;padding:3px;">`+
+      `<select class="final-i" style="${selStyle}">${[1,2,3,4].map(v=>`<option value="${v}"${v===roundI?' selected':''}>${v}</option>`).join('')}</select></td>`+
+      `<td style="background:#EDE0F5;text-align:center;padding:3px;">`+
+      `<select class="final-c" style="${selStyle}">${[1,2,3,4].map(v=>`<option value="${v}"${v===roundC?' selected':''}>${v}</option>`).join('')}</select></td>`;
 
-    return `<tr data-risk-id="${escapeXml(riskId)}" style="background:${rowBg}; ${rowBorder}">
-      <td style="font-family:var(--font-mono); font-weight:700; font-size:12px;">${escapeXml(riskId)}</td>
+    return `<tr data-risk-id="${escapeXml(riskId)}" style="background:${rowBg};${rowBorder}">
+      <td style="font-family:var(--font-mono);font-weight:700;font-size:11px;white-space:nowrap;">${escapeXml(riskId)}</td>
       <td style="font-size:12px;">${escapeXml(title)}</td>
       <td style="text-align:center;">${coverageBadge}</td>
-      ${pCells}
-      ${avgDisplay}
-      <td style="background:#E8F0FE; text-align:center; padding:4px;">
-        <select class="final-l" style="${selectStyle}">
-          ${[1,2,3,4].map(v=>`<option value="${v}" ${v===roundL?'selected':''}>${v}</option>`).join('')}
-        </select>
-      </td>
-      <td style="background:#E8F0FE; text-align:center; padding:4px;">
-        <select class="final-i" style="${selectStyle}">
-          ${[1,2,3,4].map(v=>`<option value="${v}" ${v===roundI?'selected':''}>${v}</option>`).join('')}
-        </select>
-      </td>
-      <td style="background:#E8F0FE; text-align:center; padding:4px;">
-        <select class="final-c" style="${selectStyle}">
-          ${[1,2,3,4].map(v=>`<option value="${v}" ${v===roundC?'selected':''}>${v}</option>`).join('')}
-        </select>
-      </td>
+      ${pCells}${avgCells}${finalCells}
     </tr>`;
   }).join('');
 }
@@ -8168,6 +8241,35 @@ async function addNewRiskAndOpen(){
 
 document.getElementById('addRiskBtn').addEventListener('click', addNewRiskAndOpen);
 document.getElementById('addRiskRegisterBtn')?.addEventListener('click', addNewRiskAndOpen);
+
+function updateBulkDeleteBtn(){
+  const checked = document.querySelectorAll('.risk-select-cb:checked');
+  const btn = document.getElementById('bulkDeleteBtn');
+  const countEl = document.getElementById('bulkDeleteCount');
+  if(btn){ btn.style.display = checked.length > 0 ? '' : 'none'; }
+  if(countEl){ countEl.textContent = checked.length; }
+}
+
+document.getElementById('selectAllRisks')?.addEventListener('change', (e)=>{
+  document.querySelectorAll('.risk-select-cb').forEach(cb=>{ cb.checked = e.target.checked; });
+  updateBulkDeleteBtn();
+});
+
+document.getElementById('bulkDeleteBtn')?.addEventListener('click', async ()=>{
+  const checked = [...document.querySelectorAll('.risk-select-cb:checked')];
+  if(!checked.length) return;
+  const ids = checked.map(cb=>cb.dataset.id);
+  const msg = ids.length === 1
+    ? `Delete risk ${ids[0]}?`
+    : `Delete ${ids.length} selected risks?\n\n${ids.slice(0,10).join(', ')}${ids.length>10?'…':''}`;
+  if(!confirm(msg + '\n\nThis cannot be undone.')) return;
+  for(const id of ids){
+    await RiskRegistry.delete(id);
+  }
+  document.getElementById('selectAllRisks').checked = false;
+  updateBulkDeleteBtn();
+  await refreshDashboard();
+});
 
 document.getElementById('resetRisksBtn').addEventListener('click', async ()=>{
   if(confirm('This replaces all current risks (including any imports and edits) with the original 20-risk seed list. Continue?')){

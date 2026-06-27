@@ -577,6 +577,7 @@ table.risk-table select.score-select{
   <!-- ===== TAB: HEATMAPS ===== -->
   <!-- ===== TAB: HOME ===== -->
   <section id="tab-home" class="active">
+    <div id="homeOrphanBanner" style="display:none; background:#FEF3E7; border:1px solid #E67E22; border-radius:8px; padding:10px 16px; margin-bottom:14px; font-size:13px; color:#7D4A00; display:flex; align-items:center; justify-content:space-between;"></div>
     <div class="home-kpi-grid" id="homeKpiGrid"></div>
     <div style="font-size:11px; color:var(--ink-soft); margin:-10px 0 18px; padding:8px 12px; background:var(--paper); border-radius:6px; border:1px solid var(--line);">
       <b>Scoring scale:</b> Inherent Risk = Likelihood (1–4) × Impact (1–4) = max 16. Control Level: 1 = Informal, 2 = Defined, 3 = Managed, 4 = Optimized. &nbsp;|&nbsp; Hover over any tile for details.
@@ -737,9 +738,19 @@ table.risk-table select.score-select{
     <div class="panel" style="border-left:4px solid var(--systra-red);">
       <div class="panel-head">
         <div>
-          <h2><span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--systra-red); margin-right:8px;"></span>Global Risks — G1 (Risk of Debarment)</h2>
-          <div class="sub">A focused view of the Group Family G1 risks, for board/global-level review. This is the same shared register as the Risk Register tab — edits here save everywhere.</div>
+          <h2><span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--systra-red); margin-right:8px;"></span>Global Risks — Board-Level View</h2>
+          <div class="sub">Focused view by Group Family for board/global-level review. Edits here save everywhere.</div>
         </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <label style="font-size:12px; color:var(--ink-soft); font-weight:600;">GROUP FAMILY</label>
+          <select id="globalRisksFamilyFilter" style="font-size:13px; padding:6px 10px; border-radius:6px; border:1px solid var(--line); min-width:220px;">
+            <option value="G1">G1 — Risk of Debarment</option>
+          </select>
+        </div>
+      </div>
+      <div id="globalRisksPanelHead" style="margin-bottom:12px;">
+        <h3 id="globalRisksFamilyTitle" style="font-size:15px; font-weight:700; color:var(--navy); margin:0 0 4px 0;"></h3>
+        <div id="globalRisksFamilyDesc" style="font-size:12px; color:var(--ink-soft);"></div>
       </div>
       <div style="overflow-x:auto;">
         <table class="risk-table" id="globalRisksTable">
@@ -756,7 +767,7 @@ table.risk-table select.score-select{
           <tbody></tbody>
         </table>
       </div>
-      <div id="globalRisksEmptyState" class="sub hidden" style="text-align:center; padding:30px 0;">No G1 risks in the register yet. Add or reclassify a risk to Group Family "G1_Risk of Debarment" from the Risk Register tab.</div>
+      <div id="globalRisksEmptyState" class="sub hidden" style="text-align:center; padding:30px 0;">No risks found for this Group Family yet.</div>
     </div>
   </section>
 
@@ -1170,6 +1181,7 @@ table.risk-table select.score-select{
         </div>
         <div style="display:flex; gap:8px;">
           <button class="btn ghost sm" id="addRiskBtn">+ Add new risk</button>
+          <button class="btn danger sm" id="cleanOrphansBtn" title="Remove entries with no title or no universe code (from bad consolidations)">🧹 Clean orphan entries</button>
           <button class="btn danger sm" id="resetRisksBtn">Reset to original 20</button>
         </div>
       </div>
@@ -4997,7 +5009,7 @@ async function refreshDashboard(){
   populateMapFilters();
   renderHeatmaps();
   renderTable();
-  renderGlobalRisksTable();
+  await renderGlobalRisksTable();
   renderLandscapeChart();
   renderManualTable();
   renderUniverseTable();
@@ -5165,6 +5177,34 @@ function renderHomeDashboard(responses, sessions){
         ${barHtml}
       </div>`;
     }).join('');
+  }
+
+  // ── Orphan warning banner ─────────────────────────────────────────
+  const isValidUCode = (code) => code && !code.toUpperCase().startsWith('R') && /^[A-Z]\d+$/i.test(code);
+  const orphanEntries = AGG.filter(r => !isValidUCode((r.riskUniverse||'').split('_')[0].trim()));
+  const orphanBanner = document.getElementById('homeOrphanBanner');
+  // Update clean button count in register tab
+  const cleanBtn = document.getElementById('cleanOrphansBtn');
+  if(cleanBtn){
+    cleanBtn.textContent = orphanEntries.length > 0
+      ? `🧹 Clean ${orphanEntries.length} orphan entr${orphanEntries.length===1?'y':'ies'}`
+      : '🧹 No orphans';
+    cleanBtn.style.opacity = orphanEntries.length > 0 ? '1' : '0.4';
+    cleanBtn.disabled = orphanEntries.length === 0;
+  }
+  if(orphanBanner){
+    if(orphanEntries.length > 0){
+      orphanBanner.style.display = '';
+      orphanBanner.innerHTML = `
+        <span>⚠ <b>${orphanEntries.length} orphan entr${orphanEntries.length===1?'y':'ies'}</b> found in the Risk Register — 
+        these have no valid universe code and will not appear in heat maps or landscape correctly.</span>
+        <button onclick="document.getElementById('cleanOrphansBtn').click(); switchTab('tab-register');"
+          style="margin-left:12px; padding:4px 12px; background:#E67E22; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:12px; font-weight:700;">
+          🧹 Clean now →
+        </button>`;
+    } else {
+      orphanBanner.style.display = 'none';
+    }
   }
 
   // ── BU cards ────────────────────────────────────────────────────────
@@ -5870,14 +5910,29 @@ function renderTable(){
     });
   }
 
+  const isValidUCode = (code) => {
+    if(!code) return false;
+    if(code.toUpperCase().startsWith('R')) return false;
+    return /^[A-Z]\d+$/i.test(code);
+  };
+
   const tbody = document.querySelector('#riskTable tbody');
-  tbody.innerHTML = rows.map(r=>`
-    <tr data-risk-id="${escapeXml(r.id)}" style="cursor:pointer;">
+  tbody.innerHTML = rows.map(r=>{
+    const uCode = (r.riskUniverse||'').split('_')[0].trim();
+    const isOrphan = !isValidUCode(uCode);
+    const rowStyle = isOrphan
+      ? 'cursor:pointer; background:#FFFBF0; border-left:3px solid #F1C40F;'
+      : 'cursor:pointer;';
+    const orphanBadge = isOrphan
+      ? `<span title="Orphan entry: no valid universe code. Use 🧹 Clean orphan entries to remove." style="font-size:9px;padding:1px 5px;background:#FEF3CD;color:#856404;border-radius:8px;border:1px solid #F1C40F;white-space:nowrap;">⚠ orphan</span>`
+      : '';
+    return `
+    <tr data-risk-id="${escapeXml(r.id)}" style="${rowStyle}">
       <td style="text-align:center;" onclick="event.stopPropagation();">
         <input type="checkbox" class="risk-select-cb" data-id="${escapeXml(r.id)}"
           style="width:15px;height:15px;cursor:pointer;" onclick="event.stopPropagation(); updateBulkDeleteBtn();">
       </td>
-      <td><span class="tag">${r.id}</span></td>
+      <td><span class="tag">${r.id}</span> ${orphanBadge}</td>
       <td style="min-width:160px;"><b>${escapeXml(r.title)}</b></td>
       <td style="min-width:140px; font-size:12px; color:var(--ink-soft);">${escapeXml(r.riskUniverse)}</td>
       <td style="min-width:220px; max-width:320px; font-size:12px; color:var(--ink-soft); line-height:1.45;">${escapeXml(r.description||'')}</td>
@@ -5897,8 +5952,8 @@ function renderTable(){
         <button class="icon-btn register-edit-btn" data-id="${escapeXml(r.id)}">Edit</button>
         <button class="icon-btn danger register-delete-btn" data-id="${escapeXml(r.id)}">Delete</button>
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 
   tbody.querySelectorAll('.register-edit-btn').forEach(btn=>{
     btn.addEventListener('click', (e)=> openEditPanel(e.target.dataset.id));
@@ -5938,30 +5993,33 @@ async function renderLandscapeChart(){
   const container = document.getElementById('landscapeChart');
   if(!container || !AGG.length) return;
 
-  // Group risks by the chosen dimension
-  // IMPORTANT: in Universe mode, deduplicate by universe CODE (not the full key)
-  // so R01-FRA and R01-IND with same universe A1 count as ONE universe entry
-  // In Family mode, skip risks with no groupFamily (don't show "Unclassified" unless all are unclassified)
   const groupMap = new Map();
-  AGG.forEach(r=>{
-    let key;
-    if(landscapeMode === 'family'){
-      key = r.groupFamily || null;
-      if(!key) return; // skip unclassified in family mode
-    } else {
-      // Universe mode: group by universe CODE only (first part before '_')
-      const uCode = (r.riskUniverse||'').split('_')[0];
-      if(!uCode || uCode === r.id) return; // skip blank/orphan entries
-      key = r.riskUniverse || uCode; // use full universe string for label
-    }
-    if(!groupMap.has(key)) groupMap.set(key, []);
-    groupMap.get(key).push(r);
-  });
 
-  // If all risks are unclassified in family mode, show unclassified
-  if(groupMap.size === 0 && landscapeMode === 'family'){
+  if(landscapeMode === 'universe'){
+    // UNIVERSE MODE: show ALL 36 universe categories from SEED_UNIVERSE
+    // Each bubble = one universe category
+    // Size = number of register entries that reference it (0 = shown smaller/dimmed)
+    // Build lookup: universe code → AGG entries
+    const byCode = new Map();
     AGG.forEach(r=>{
-      const key = r.groupFamily || 'Unclassified';
+      const uCode = (r.riskUniverse||'').split('_')[0].trim();
+      const isValidUCode = uCode && !uCode.toUpperCase().startsWith('R') && /^[A-Z]\d+$/i.test(uCode);
+      if(!isValidUCode) return;
+      if(!byCode.has(uCode)) byCode.set(uCode, []);
+      byCode.get(uCode).push(r);
+    });
+    // One entry per SEED_UNIVERSE category
+    SEED_UNIVERSE.forEach(u=>{
+      const key = `${u.code}_${u.label}`;
+      const risks = byCode.get(u.code) || [];
+      groupMap.set(key, risks); // include even if 0 entries (shown as empty bubble)
+    });
+  } else {
+    // FAMILY MODE: show ALL 7 families from SEED_GROUP_FAMILIES (even with 0 entries)
+    SEED_GROUP_FAMILIES.forEach(fk=>{ groupMap.set(fk, []); });
+    AGG.forEach(r=>{
+      const key = r.groupFamily || null;
+      if(!key) return;
       if(!groupMap.has(key)) groupMap.set(key, []);
       groupMap.get(key).push(r);
     });
@@ -5973,43 +6031,62 @@ async function renderLandscapeChart(){
     const label = parts.slice(1).join('_') || key;
     const critical = risks.filter(r=>r.inherentAvg>=12).length;
     const avgI  = risks.length ? (risks.reduce((s,r)=>s+r.inherentAvg,0)/risks.length) : 0;
-    // For family mode: attach the mapped universe codes so the breakdown can show them
     const mappedUniverseCodes = landscapeMode === 'family'
       ? GroupUniverseMapRegistry.getUniversesForFamily(key)
       : [];
+    const isEmpty = risks.length === 0; // universe category with no register entries yet
     return { key, code, label, risks, critical, avgInherent: avgI,
-             color: BUBBLE_PALETTE[i % BUBBLE_PALETTE.length],
-             mappedUniverseCodes };
-  }).sort((a,b)=>b.risks.length - a.risks.length);
+             color: isEmpty ? '#94A3B8' : BUBBLE_PALETTE[i % BUBBLE_PALETTE.length],
+             mappedUniverseCodes, isEmpty };
+  });
+  // Sort by SEED_UNIVERSE order in universe mode so bubbles are evenly distributed
+  // (never sort empty-last — that clusters all grey on one side)
+  if(landscapeMode === 'universe'){
+    const seedOrder = new Map(SEED_UNIVERSE.map((u,idx)=>[u.code, idx]));
+    groups.sort((a,b)=>(seedOrder.get(a.code)||99) - (seedOrder.get(b.code)||99));
+  } else {
+    groups.sort((a,b)=>b.risks.length - a.risks.length);
+  }
 
   // Layout: radial around a central node
   const W = Math.max(container.clientWidth || 800, 600);
-  const H = 520;
+  const H = landscapeMode === 'universe' ? 680 : 520;
   const cx = W/2, cy = H/2;
   const n = groups.length;
-  const maxCount = Math.max(...groups.map(g=>g.risks.length));
-  const MIN_R = 36, MAX_R = 80;
+  const nonEmpty = groups.filter(g=>!g.isEmpty).length;
+  const maxCount = Math.max(...groups.filter(g=>!g.isEmpty).map(g=>g.risks.length), 1);
+  const MIN_R = landscapeMode === 'universe' ? 28 : 36;
+  const MAX_R = landscapeMode === 'universe' ? 60 : 80;
+  const EMPTY_R = 22; // smaller for uncovered universe categories
 
-  function bubbleR(count){ return MIN_R + ((count/maxCount) * (MAX_R - MIN_R)); }
+  function bubbleR(g){
+    if(g.isEmpty) return EMPTY_R;
+    return MIN_R + ((g.risks.length/maxCount) * (MAX_R - MIN_R));
+  }
 
-  // Arrange bubbles in a spiral-friendly radial layout
+  // Arrange bubbles in a single radial ring — all 36 evenly spaced
   const positions = groups.map((g, i)=>{
+    const r = bubbleR(g);
     const angle = (i/n) * 2*Math.PI - Math.PI/2;
-    const r = bubbleR(g.risks.length);
-    // Vary orbit radius slightly so big bubbles don't overlap
-    const orbit = Math.min(W, H)*0.34 + (i % 3)*14;
+    // Single ring — vary radius slightly for visual interest but keep them all on one ring
+    const baseOrbit = landscapeMode === 'universe'
+      ? Math.min(W*0.42, H*0.42)
+      : Math.min(W, H)*0.34;
+    const orbit = baseOrbit + (g.isEmpty ? 0 : (i % 2)*8);
     return { x: cx + orbit*Math.cos(angle), y: cy + orbit*Math.sin(angle), r };
   });
 
   // Build SVG
   let lines = '', bubbles = '';
+  const svgH = landscapeMode === 'universe' ? Math.max(H, W * 0.65) : H;
+  container.style.height = svgH + 'px';
 
   // Central node
   const centralR = 34;
-  const centralLabel = `${AGG.length} Risks`;
+  const centralCount = landscapeMode === 'universe' ? SEED_UNIVERSE.length : groups.length;
   bubbles += `<circle cx="${cx}" cy="${cy}" r="${centralR}" fill="var(--navy)" opacity="0.12"/>
-    <text x="${cx}" y="${cy-5}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--navy)" font-family="Inter,sans-serif">${AGG.length}</text>
-    <text x="${cx}" y="${cy+8}" text-anchor="middle" font-size="9" fill="var(--navy)" font-family="Inter,sans-serif" opacity="0.7">Risks</text>`;
+    <text x="${cx}" y="${cy-5}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--navy)" font-family="Inter,sans-serif">${centralCount}</text>
+    <text x="${cx}" y="${cy+8}" text-anchor="middle" font-size="9" fill="var(--navy)" font-family="Inter,sans-serif" opacity="0.7">${landscapeMode === 'universe' ? 'Categories' : 'Families'}</text>`;
 
   // Connector lines from centre to each bubble
   groups.forEach((g, i)=>{
@@ -6024,23 +6101,34 @@ async function renderLandscapeChart(){
   groups.forEach((g, i)=>{
     const {x, y, r} = positions[i];
     const isSelected = selectedBubbleKey === g.key;
-    const shortLabel = g.label.length > 22 ? g.label.slice(0,20)+'…' : g.label;
-    const critLine = g.critical > 0 ? `<tspan x="${x}" dy="12" font-size="8.5" opacity="0.85">⚠ ${g.critical} critical</tspan>` : '';
+    const shortLabel = g.label.length > 18 ? g.label.slice(0,16)+'…' : g.label;
+    const critLine = g.critical > 0 ? `<tspan x="${x}" dy="11" font-size="8" opacity="0.85">⚠ ${g.critical} critical</tspan>` : '';
     const strokeW = isSelected ? 3 : 1.5;
     const strokeC = isSelected ? '#fff' : 'rgba(255,255,255,0.4)';
+    const opacity = g.isEmpty ? 0.45 : (isSelected ? 1 : 0.88);
 
-    bubbles += `<g class="bubble-node${isSelected?' selected':''}" data-key="${escapeXml(g.key)}" onclick="onBubbleClick('${escapeXml(g.key)}')">
-      <circle cx="${x}" cy="${y}" r="${r}" fill="${g.color}" stroke="${strokeC}" stroke-width="${strokeW}" opacity="${isSelected?1:0.88}"/>
-      <text text-anchor="middle" fill="#fff" font-family="Inter,sans-serif">
-        <tspan x="${x}" y="${y - r*0.28}" font-size="${Math.max(9, Math.min(13, r*0.22))}" font-weight="700">${escapeXml(g.code)}</tspan>
-        <tspan x="${x}" dy="13" font-size="${Math.max(7.5, Math.min(10, r*0.17))}" opacity="0.9">${escapeXml(shortLabel)}</tspan>
-        <tspan x="${x}" dy="12" font-size="${Math.max(9, Math.min(13, r*0.22))}" font-weight="700">(${g.risks.length})</tspan>
-        ${critLine}
-      </text>
-    </g>`;
+    if(g.isEmpty){
+      // Empty universe category — small grey bubble, no count shown
+      bubbles += `<g class="bubble-node" data-key="${escapeXml(g.key)}" title="${escapeXml(g.code+': '+g.label)} — no register entries yet">
+        <circle cx="${x}" cy="${y}" r="${r}" fill="${g.color}" stroke="rgba(255,255,255,0.3)" stroke-width="1" opacity="${opacity}"/>
+        <text text-anchor="middle" fill="#fff" font-family="Inter,sans-serif" opacity="0.8">
+          <tspan x="${x}" y="${y+4}" font-size="${Math.max(7, r*0.28)}" font-weight="700">${escapeXml(g.code)}</tspan>
+        </text>
+      </g>`;
+    } else {
+      bubbles += `<g class="bubble-node${isSelected?' selected':''}" data-key="${escapeXml(g.key)}" onclick="onBubbleClick('${escapeXml(g.key)}')">
+        <circle cx="${x}" cy="${y}" r="${r}" fill="${g.color}" stroke="${strokeC}" stroke-width="${strokeW}" opacity="${opacity}"/>
+        <text text-anchor="middle" fill="#fff" font-family="Inter,sans-serif">
+          <tspan x="${x}" y="${y - r*0.28}" font-size="${Math.max(9, Math.min(13, r*0.22))}" font-weight="700">${escapeXml(g.code)}</tspan>
+          <tspan x="${x}" dy="13" font-size="${Math.max(7.5, Math.min(10, r*0.17))}" opacity="0.9">${escapeXml(shortLabel)}</tspan>
+          <tspan x="${x}" dy="12" font-size="${Math.max(9, Math.min(13, r*0.22))}" font-weight="700">(${g.risks.length})</tspan>
+          ${critLine}
+        </text>
+      </g>`;
+    }
   });
 
-  container.innerHTML = `<svg class="landscape-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+  container.innerHTML = `<svg class="landscape-svg" viewBox="0 0 ${W} ${svgH}" xmlns="http://www.w3.org/2000/svg">
     ${lines}${bubbles}
   </svg>`;
 
@@ -6195,74 +6283,135 @@ document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn=>{
   }
 });
 
-function renderGlobalRisksTable(){
-  // G1 = Risk of Debarment — includes risks where:
-  // 1. groupFamily starts with G1_, OR
-  // 2. riskUniverse starts with B (B1_Corruption, B2_, B3_, B4_, B5_, B6_)
-  //    as these are mapped to G1 in the Group Universe Map
-  const rows = AGG.filter(r => {
-    const gf = r.groupFamily || '';
-    const ru = r.riskUniverse || '';
-    const ruCode = ru.split('_')[0];
-    // G1 mapped universe codes from SEED_GROUP_UNIVERSE_MAP
-    const g1Codes = ['B1','B2','B3','B4','B5','B6'];
-    return gf.startsWith('G1_') || g1Codes.includes(ruCode);
-  });
+async function renderGlobalRisksTable(){
   const tbody = document.querySelector('#globalRisksTable tbody');
   const table = document.getElementById('globalRisksTable');
   const emptyState = document.getElementById('globalRisksEmptyState');
   if(!tbody) return;
 
-  if(rows.length === 0){
+  // Populate family dropdown if needed
+  const familySelect = document.getElementById('globalRisksFamilyFilter');
+  if(familySelect){
+    let families;
+    try{
+      const stored = JSON.parse(localStorage.getItem(GROUP_FAMILY_KEY)||'[]');
+      families = stored.length ? stored : SEED_GROUP_FAMILIES;
+    } catch(e){ families = SEED_GROUP_FAMILIES; }
+    const currentVal = familySelect.value || 'G1';
+    familySelect.innerHTML = families.map(f=>{
+      const prefix = f.split('_')[0];
+      const label  = f.split('_').slice(1).join(' ');
+      return `<option value="${prefix}" ${prefix===currentVal?'selected':''}>${prefix} — ${label}</option>`;
+    }).join('');
+  }
+
+  // Determine which family is selected
+  const selectedPrefix = familySelect?.value || 'G1';
+  let allFamilies;
+  try{
+    const stored = JSON.parse(localStorage.getItem(GROUP_FAMILY_KEY)||'[]');
+    allFamilies = stored.length ? stored : SEED_GROUP_FAMILIES;
+  } catch(e){ allFamilies = SEED_GROUP_FAMILIES; }
+  const selectedFamily = allFamilies.find(f=>f.startsWith(selectedPrefix+'_')) || allFamilies[0] || 'G1_Risk of Debarment';
+  const familyLabel = selectedFamily.split('_').slice(1).join(' ');
+
+  // Update panel heading
+  const titleEl = document.getElementById('globalRisksFamilyTitle');
+  const descEl  = document.getElementById('globalRisksFamilyDesc');
+  if(titleEl) titleEl.textContent = selectedFamily.replace('_',' — ');
+  if(descEl)  descEl.textContent  = `All register entries assigned to "${familyLabel}" across all Business Units.`;
+
+  // Get universe codes mapped to this family
+  const groupMap = GroupUniverseMapRegistry.getAll();
+  const familyCodes = groupMap[selectedFamily] || [];
+
+  // Load universe registry for canonical titles/descriptions
+  const universeEntries = await UniverseRegistry.getAll();
+  const uDefaults = UniverseDefaultsRegistry.getAll();
+  const uByCode   = new Map(universeEntries.map(u=>[u.code, u]));
+
+  // Group AGG entries by universe code for this family
+  const byCode = new Map();
+  AGG.forEach(r=>{
+    const uCode = (r.riskUniverse||'').split('_')[0];
+    // Match if: family code list contains this uCode, OR groupFamily matches selected family
+    const inFamily = familyCodes.includes(uCode) || r.groupFamily === selectedFamily;
+    if(!inFamily) return;
+    if(!byCode.has(uCode)) byCode.set(uCode, []);
+    byCode.get(uCode).push(r);
+  });
+
+  // Also find entries that match groupFamily but have no valid universe code
+  const orphanFamilyRisks = AGG.filter(r=>
+    r.groupFamily === selectedFamily &&
+    !familyCodes.includes((r.riskUniverse||'').split('_')[0])
+  );
+
+  // Build display rows — universe codes in this family first, then any extras
+  const displayCodes = familyCodes.length > 0
+    ? [...new Set([...familyCodes, ...[...byCode.keys()]])]
+    : [...byCode.keys()];
+
+  const totalEntries = displayCodes.reduce((s,c)=>s+(byCode.get(c)||[]).length, 0)
+    + orphanFamilyRisks.length;
+
+  if(totalEntries === 0 && displayCodes.length === 0){
     table.classList.add('hidden');
     emptyState.classList.remove('hidden');
+    emptyState.textContent = `No risks assigned to "${familyLabel}" yet. Edit risks in the Risk Register and set their Group Family.`;
     return;
   }
   table.classList.remove('hidden');
   emptyState.classList.add('hidden');
 
-  // Group by universe category, show all BUs
-  const byUniverse = new Map();
-  rows.forEach(r=>{
-    const key = r.riskUniverse || r.id;
-    if(!byUniverse.has(key)) byUniverse.set(key, []);
-    byUniverse.get(key).push(r);
-  });
-
-  tbody.innerHTML = [...byUniverse.entries()].map(([uKey, risks])=>{
+  const makeRow = (code, risks, uEntry, uDef) => {
+    const title = uDef?.title || uEntry?.label || code;
+    const desc  = uDef?.description || risks[0]?.description || '';
+    if(risks.length === 0){
+      return `<tr style="opacity:0.4;">
+        <td style="font-family:var(--font-mono);font-weight:700;font-size:11px;">${escapeXml(code)}</td>
+        <td><b>${escapeXml(title)}</b></td>
+        <td style="font-size:12px;color:var(--ink-soft);">${escapeXml(desc)}</td>
+        <td>—</td><td style="text-align:center;">—</td><td style="text-align:center;">—</td>
+        <td style="text-align:center;">—</td><td></td>
+      </tr>`;
+    }
     const buBadges = risks.map(r=>
-      `<span style="font-family:var(--font-mono);font-size:10px;padding:1px 6px;background:var(--paper);border:1px solid var(--line);border-radius:8px;margin-right:4px;">${escapeXml(r.bu||'—')}</span>`
+      `<span style="font-family:var(--font-mono);font-size:10px;padding:1px 7px;background:var(--paper);border:1px solid var(--line);border-radius:8px;margin-right:4px;">${escapeXml(r.bu||'—')}</span>`
     ).join('');
-    const avgL = (risks.reduce((s,r)=>s+r.likelihoodAvg,0)/risks.length).toFixed(1);
-    const avgI = (risks.reduce((s,r)=>s+r.impactAvg,0)/risks.length).toFixed(1);
+    const avgL   = (risks.reduce((s,r)=>s+(r.likelihoodAvg||0),0)/risks.length).toFixed(1);
+    const avgI   = (risks.reduce((s,r)=>s+(r.impactAvg||0),0)/risks.length).toFixed(1);
     const avgInh = (risks.reduce((s,r)=>s+r.inherentAvg,0)/risks.length).toFixed(1);
-    const inhNum = parseFloat(avgInh);
-    const zoneColor = inhNum>=12?'#E74C3C':inhNum>=9?'#E67E22':inhNum>=4?'#F1C40F':'#27AE60';
-    const firstRisk = risks[0];
-    const uParts = uKey.split('_');
-    const uCode = uParts[0];
-    const uLabel = uParts.slice(1).join('_') || uKey;
-    return `
-    <tr>
-      <td style="font-family:var(--font-mono);font-weight:700;font-size:11px;white-space:nowrap;">${escapeXml(uCode)}</td>
-      <td><b>${escapeXml(firstRisk.title || uLabel)}</b></td>
-      <td style="max-width:300px; line-height:1.5; color:var(--ink-soft); font-size:12px;">${escapeXml(firstRisk.description||'')}</td>
+    const zc = parseFloat(avgInh)>=12?'#E74C3C':parseFloat(avgInh)>=9?'#E67E22':parseFloat(avgInh)>=4?'#F1C40F':'#27AE60';
+    return `<tr>
+      <td style="font-family:var(--font-mono);font-weight:700;font-size:11px;white-space:nowrap;">${escapeXml(code)}</td>
+      <td><b>${escapeXml(title)}</b></td>
+      <td style="font-size:12px;color:var(--ink-soft);max-width:280px;">${escapeXml(desc)}</td>
       <td>${buBadges}</td>
       <td style="text-align:center;font-family:var(--font-mono);">${avgL}</td>
       <td style="text-align:center;font-family:var(--font-mono);">${avgI}</td>
-      <td style="text-align:center;">
-        <span style="font-family:var(--font-mono);font-weight:700;padding:3px 8px;background:${zoneColor}22;color:${zoneColor};border-radius:6px;border:1px solid ${zoneColor}44;">${avgInh}</span>
-      </td>
-      <td class="row-actions">
-        ${risks.map(r=>`<button class="icon-btn global-risk-edit-btn" data-id="${escapeXml(r.id)}" title="Edit ${escapeXml(r.bu||'')} entry">${escapeXml(r.bu||'Edit')}</button>`).join('')}
-      </td>
+      <td style="text-align:center;"><span style="font-family:var(--font-mono);font-weight:700;padding:3px 8px;background:${zc}22;color:${zc};border-radius:6px;border:1px solid ${zc}44;">${avgInh}</span></td>
+      <td class="row-actions">${risks.map(r=>`<button class="icon-btn global-risk-edit-btn" data-id="${escapeXml(r.id)}">${escapeXml(r.bu||'Edit')}</button>`).join('')}</td>
     </tr>`;
+  };
+
+  tbody.innerHTML = displayCodes.map(code=>{
+    const risks  = byCode.get(code) || [];
+    const uEntry = uByCode.get(code);
+    const uDef   = uDefaults[code] || {};
+    return makeRow(code, risks, uEntry, uDef);
   }).join('');
 
   tbody.querySelectorAll('.global-risk-edit-btn').forEach(btn=>{
-    btn.addEventListener('click', (e)=> openEditPanel(e.target.dataset.id));
+    btn.addEventListener('click', e=> openEditPanel(e.target.dataset.id));
   });
 }
+
+// Wire the family dropdown
+document.getElementById('globalRisksFamilyFilter')?.addEventListener('change', ()=>{
+  renderGlobalRisksTable();
+});
+
 
 function renderRespList(responses){
   document.getElementById('respCount').textContent = responses.length;
@@ -7401,7 +7550,7 @@ async function renderAllAdminListEditors(){
   renderSimpleListEditor('statusEditor', STATUS_KEY, SEED_STATUSES, v=>risks.filter(r=>r.status===v).length);
   await renderCustomFieldsList();
   renderUniverseDefaultsTable();
-  renderGroupUniverseMapEditor();
+  await renderGroupUniverseMapEditor();
 }
 
 /* =====================================================================
@@ -7416,11 +7565,20 @@ async function renderGroupUniverseMapEditor(){
   const container = document.getElementById('groupUniverseMapEditor');
   if(!container) return;
 
-  const map    = GroupUniverseMapRegistry.getAll();
-  const allFamilies = await (async ()=>{
-    try{ return await RiskRegistry.getAll().then(()=>[]); } catch(e){ return []; }
-  })();
-  // Use the Group Family list from the list editor seed + localStorage
+  try {
+
+  // Load map — try Firebase first, fall back to localStorage, then SEED
+  await GroupUniverseMapRegistry.load();
+  let map = GroupUniverseMapRegistry.getAll();
+
+  // If map is empty (Firebase failed or new install), use SEED
+  if(!map || Object.keys(map).length === 0){
+    map = JSON.parse(JSON.stringify(SEED_GROUP_UNIVERSE_MAP));
+    // Save seed to both backends so future loads work
+    await GroupUniverseMapRegistry.saveAll(map);
+  }
+
+  // Get Group Family list — fall back to SEED if localStorage empty
   const families = (() => {
     try{
       const stored = JSON.parse(localStorage.getItem(GROUP_FAMILY_KEY)||'null');
@@ -7435,11 +7593,16 @@ async function renderGroupUniverseMapEditor(){
   const assigned = new Set(Object.values(map).flat());
   const unassigned = universeEntries.filter(e=>!assigned.has(e.code));
 
-  // Work from a mutable copy so edits don't hit Firestore until Save is clicked
+  // Work from a mutable copy
   let editMap = JSON.parse(JSON.stringify(map));
 
-  // Also include any families that have entries in the map but aren't in the list editor
-  const allFamilyKeys = new Set([...families, ...Object.keys(editMap)]);
+  // allFamilyKeys: use map keys as primary (they match SEED_GROUP_UNIVERSE_MAP exactly)
+  // Merge with families list to catch any custom families added via the list editor
+  const mapKeys = Object.keys(editMap);
+  const allFamilyKeys = new Set([
+    ...mapKeys,
+    ...families.filter(f=> !mapKeys.some(k=>k===f || k.startsWith(f.split('_')[0]+'_')))
+  ]);
 
   function rebuild(){
     const assignedNow = new Set(Object.values(editMap).flat());
@@ -7555,58 +7718,76 @@ async function renderGroupUniverseMapEditor(){
     rebuild();
   };
 
-  // Wire Save and Reset buttons
-  document.getElementById('gum_create_btn').onclick = async ()=>{
-    const code  = (document.getElementById('gum_new_code').value.trim()).toUpperCase();
-    const label = document.getElementById('gum_new_label').value.trim();
-    const fk    = document.getElementById('gum_new_family').value;
-    const msg   = document.getElementById('gum_create_msg');
-    msg.style.display = '';
-    if(!code){ msg.textContent='✗ Please enter a code (e.g. K1)'; msg.style.color='var(--bad)'; return; }
-    if(!label){ msg.textContent='✗ Please enter a label'; msg.style.color='var(--bad)'; return; }
-    const existing = await UniverseRegistry.getAll();
-    if(existing.some(e=>e.code.toUpperCase()===code)){
-      msg.textContent=`✗ Code "${code}" already exists`; msg.style.color='var(--bad)'; return;
-    }
-    // Add to universe library
-    await UniverseRegistry.add({ code, label });
-    // Assign to chosen family in working editMap
-    if(fk){
-      if(!editMap[fk]) editMap[fk]=[];
-      if(!editMap[fk].includes(code)) editMap[fk].push(code);
-    }
+  // Wire Save and Reset buttons (these are in static HTML, always exist)
+  const saveBtn = document.getElementById('saveGroupUniverseMapBtn');
+  const resetBtn = document.getElementById('resetGroupUniverseMapBtn');
+
+  if(saveBtn) saveBtn.onclick = async ()=>{
     await GroupUniverseMapRegistry.saveAll(editMap);
-    GROUP_UNIVERSE_MAP = editMap;
-    msg.textContent=`✓ "${code} — ${label}" created${fk?' and assigned to '+fk.split('_')[0]:' (unassigned)'}`;
-    msg.style.color='var(--good)';
-    document.getElementById('gum_new_code').value='';
-    document.getElementById('gum_new_label').value='';
-    document.getElementById('gum_new_family').value='';
-    await renderGroupUniverseMapEditor();
-    renderUniverseDefaultsTable();
+    const orig = saveBtn.textContent;
+    saveBtn.textContent = '✓ Saved';
+    saveBtn.style.background = 'var(--good)';
+    saveBtn.style.borderColor = 'var(--good)';
+    setTimeout(()=>{ saveBtn.textContent=orig; saveBtn.style.background=''; saveBtn.style.borderColor=''; }, 1800);
     renderLandscapeChart();
-    await refreshDashboard();
   };
 
-  document.getElementById('saveGroupUniverseMapBtn').onclick = async ()=>{
-    await GroupUniverseMapRegistry.saveAll(editMap);
-    const btn = document.getElementById('saveGroupUniverseMapBtn');
-    const orig = btn.textContent;
-    btn.textContent = '✓ Saved';
-    btn.style.background = 'var(--good)';
-    btn.style.borderColor = 'var(--good)';
-    setTimeout(()=>{ btn.textContent=orig; btn.style.background=''; btn.style.borderColor=''; }, 1800);
-    renderLandscapeChart(); // refresh bubble chart immediately
-  };
-
-  document.getElementById('resetGroupUniverseMapBtn').onclick = ()=>{
+  if(resetBtn) resetBtn.onclick = ()=>{
     if(!confirm('Reset all mappings to the built-in defaults? Your current assignments will be lost.')) return;
     editMap = JSON.parse(JSON.stringify(SEED_GROUP_UNIVERSE_MAP));
     GroupUniverseMapRegistry.resetToSeed();
     rebuild();
   };
 
-  rebuild();
+  rebuild(); // renders container.innerHTML including gum_create_btn
+
+  // Wire gum_create_btn AFTER rebuild() so the element exists
+  const createBtn = document.getElementById('gum_create_btn');
+  if(createBtn) createBtn.onclick = async ()=>{
+    const code  = (document.getElementById('gum_new_code')?.value.trim()||'').toUpperCase();
+    const label = document.getElementById('gum_new_label')?.value.trim()||'';
+    const fk    = document.getElementById('gum_new_family')?.value||'';
+    const msg   = document.getElementById('gum_create_msg');
+    if(msg) msg.style.display = '';
+    if(!code){ if(msg){msg.textContent='✗ Please enter a code (e.g. K1)'; msg.style.color='var(--bad)';} return; }
+    if(!label){ if(msg){msg.textContent='✗ Please enter a label'; msg.style.color='var(--bad)';} return; }
+    const existing = await UniverseRegistry.getAll();
+    if(existing.some(e=>e.code.toUpperCase()===code)){
+      if(msg){msg.textContent=`✗ Code "${code}" already exists`; msg.style.color='var(--bad)';} return;
+    }
+    await UniverseRegistry.add({ code, label });
+    if(fk){
+      if(!editMap[fk]) editMap[fk]=[];
+      if(!editMap[fk].includes(code)) editMap[fk].push(code);
+    }
+    await GroupUniverseMapRegistry.saveAll(editMap);
+    GROUP_UNIVERSE_MAP = editMap;
+    if(msg){msg.textContent=`✓ "${code} — ${label}" created${fk?' and assigned to '+fk.split('_')[0]:' (unassigned)'}`;msg.style.color='var(--good)';}
+    await renderGroupUniverseMapEditor();
+    renderUniverseDefaultsTable();
+    renderLandscapeChart();
+    await refreshDashboard();
+  };
+
+  } catch(err) {
+    console.error('renderGroupUniverseMapEditor error:', err);
+    // Fallback: render SEED data in read-only mode
+    const fallbackMap = JSON.parse(JSON.stringify(SEED_GROUP_UNIVERSE_MAP));
+    container.innerHTML = Object.keys(fallbackMap).map((fk,fi)=>{
+      const codes = fallbackMap[fk] || [];
+      const fCode = fk.split('_')[0];
+      const fLabel = fk.split('_').slice(1).join(' ');
+      const colors = ['#2C5282','#C0392B','#1E8449','#8E6B1A','#6C3483','#117A8B','#E67E22'];
+      return `<div class="gum-family-block">
+        <div class="gum-family-header">
+          <div class="gum-family-dot" style="background:${colors[fi%7]};"></div>
+          <div class="gum-family-name">${escapeXml(fCode)} · ${escapeXml(fLabel)}</div>
+          <span class="gum-family-count">${codes.length} universe categories</span>
+        </div>
+        <div class="gum-chips">${codes.map(c=>`<span class="gum-chip"><span class="gum-chip-code">${escapeXml(c)}</span></span>`).join('')}</div>
+      </div>`;
+    }).join('');
+  }
 }
 
 async function renderUniverseDefaultsTable(){
@@ -7865,9 +8046,21 @@ async function renderUniverseTable(){
   const tbody = document.querySelector('#universeTable tbody');
   if(!tbody) return;
   const search = (document.getElementById('universeSearch')?.value || '').toLowerCase();
-  const entries = await UniverseRegistry.getAll();
-  const risks = await RiskRegistry.getAll();
 
+  // Get entries from backend
+  let entries = await UniverseRegistry.getAll();
+
+  // Always guarantee all 36 SEED entries appear — merge missing ones into both
+  // the backend (so they persist) and the display list
+  const existingCodes = new Set(entries.map(e=>e.code));
+  const missingSeed = SEED_UNIVERSE.filter(e=>!existingCodes.has(e.code));
+  if(missingSeed.length > 0){
+    // Save all missing ones back to Firebase in one batch
+    await universeBackend.saveAll(missingSeed);
+    entries = [...entries, ...missingSeed];
+  }
+
+  const risks = await RiskRegistry.getAll();
   const usageCount = code => risks.filter(r => (r.riskUniverse||'').startsWith(code + '_')).length;
 
   let rows = entries.filter(e=>{
@@ -8186,8 +8379,7 @@ document.getElementById('clearOpenaiKeyBtn')?.addEventListener('click', ()=>{
 // Show current key status on Admin Settings load
 document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn=>{
   if(btn.dataset.tab === 'adminsettings'){
-    const origClick = btn.onclick;
-    btn.addEventListener('click', ()=>{
+    btn.addEventListener('click', async ()=>{
       const keyStatus = document.getElementById('openaiKeyStatus');
       if(keyStatus){
         keyStatus.textContent = getOpenAIKey()
@@ -8195,6 +8387,9 @@ document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn=>{
           : 'No key saved yet. Paste your key above and click Save to enable AI generation.';
         keyStatus.style.color = getOpenAIKey() ? 'var(--good)' : 'var(--ink-soft)';
       }
+      // Re-render mapping editor each time admin tab opens
+      // (Firebase may now be connected even if it wasn't on initial load)
+      await renderGroupUniverseMapEditor();
     });
   }
 });
@@ -8476,6 +8671,32 @@ async function addNewRiskAndOpen(){
 
 document.getElementById('addRiskBtn').addEventListener('click', addNewRiskAndOpen);
 document.getElementById('addRiskRegisterBtn')?.addEventListener('click', addNewRiskAndOpen);
+
+// Clean orphan entries — entries with no proper universe code (bad consolidations)
+document.getElementById('cleanOrphansBtn')?.addEventListener('click', async ()=>{
+  const all = await RiskRegistry.getAll();
+  const isValidUCode = (code) => {
+    if(!code) return false;
+    if(code.toUpperCase().startsWith('R')) return false;
+    return /^[A-Z]\d+$/i.test(code);
+  };
+  const orphans = all.filter(r=>{
+    const uCode = (r.riskUniverse||'').split('_')[0].trim();
+    return !isValidUCode(uCode); // no valid universe code = orphan
+  });
+  if(orphans.length === 0){ alert('No orphan entries found. Register is clean!'); return; }
+  const ids = orphans.map(r=>r.id);
+  const confirmed = confirm(
+    `Found ${orphans.length} orphan entries (no valid universe code):\n\n` +
+    ids.slice(0,15).join(', ') + (ids.length>15 ? `\n…and ${ids.length-15} more` : '') +
+    `\n\nThese are leftover test entries from consolidations.\n` +
+    `Delete all ${orphans.length} orphan entries?`
+  );
+  if(!confirmed) return;
+  for(const r of orphans){ await RiskRegistry.delete(r.id); }
+  alert(`✓ Deleted ${orphans.length} orphan entries. Register is clean.`);
+  await refreshDashboard();
+});
 
 function updateBulkDeleteBtn(){
   const checked = document.querySelectorAll('.risk-select-cb:checked');
@@ -9168,13 +9389,12 @@ async function enterSurveyMode(){
     }
   }
 
-  // Live count for the welcome copy — reflects the current register size
-  // (Firestore once connected, so it's the same number on every device).
+  // Live count for the welcome copy — use universe size (what participants will score)
   try{
     const riskCountEl = document.getElementById('surveyRiskCount');
     if(riskCountEl){
-      const previewRisks = await RiskRegistry.getAll();
-      riskCountEl.textContent = previewRisks.length;
+      const universeRisks = await UniverseRegistry.getAll();
+      riskCountEl.textContent = universeRisks.length || SEED_UNIVERSE.length;
     }
   } catch(e){ /* leave the "all" fallback text in place */ }
 

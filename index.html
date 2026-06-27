@@ -119,9 +119,10 @@ section.active{display:block;}
 .map-card h3{font-family:var(--font-display); font-size:16px; font-weight:600; text-align:center; letter-spacing:0.02em; text-transform:uppercase; margin-bottom:10px; color:var(--navy);}
 .map-card svg{width:100%; height:auto; display:block;}
 /* ── Home tab ─────────────────────────────────────────────────── */
-.home-kpi-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px;}
-@media(max-width:1100px){.home-kpi-grid{grid-template-columns:repeat(3,1fr);}}
-@media(max-width:700px){.home-kpi-grid{grid-template-columns:repeat(2,1fr); gap:8px;}}
+.home-kpi-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px;}
+@media(max-width:1100px){.home-kpi-grid{grid-template-columns:repeat(4,1fr);}}
+@media(max-width:900px){.home-kpi-grid{grid-template-columns:repeat(2,1fr); gap:10px;}}
+@media(max-width:500px){.home-kpi-grid{grid-template-columns:repeat(2,1fr); gap:8px;}}
 .kpi-tile{border-radius:12px; padding:18px 16px; color:#fff; position:relative; overflow:hidden; display:flex; flex-direction:column; justify-content:space-between; min-height:120px;}
 @media(max-width:700px){.kpi-tile{padding:13px 12px; min-height:100px; border-radius:10px;}}
 .kpi-tile .kpi-top{display:flex; justify-content:space-between; align-items:flex-start;}
@@ -743,9 +744,13 @@ table.risk-table select.score-select{
       <div style="overflow-x:auto;">
         <table class="risk-table" id="globalRisksTable">
           <thead><tr>
-            <th>Risk Universe</th>
+            <th>Code</th>
             <th>Title</th>
             <th>Description</th>
+            <th>BUs</th>
+            <th>Avg L</th>
+            <th>Avg I</th>
+            <th>Inherent</th>
             <th>Actions</th>
           </tr></thead>
           <tbody></tbody>
@@ -836,7 +841,7 @@ table.risk-table select.score-select{
             <th>Mode</th>
             <th>Created</th>
             <th>Submissions</th>
-            <th>Status</th>
+            <th>Status / Consolidated</th>
             <th>Actions</th>
           </tr></thead>
           <tbody></tbody>
@@ -5014,65 +5019,139 @@ function getFilteredAgg(filterState){
    HOME DASHBOARD — KPI tiles, BU cards, priority risks, recent subs
    ===================================================================== */
 function renderHomeDashboard(responses, sessions){
-  // ── KPI tiles ──────────────────────────────────────────────────────
+  // ── Core metrics ─────────────────────────────────────────────────
   const total       = AGG.length;
-  const critical    = AGG.filter(r=>r.inherentAvg >= 12).length;
-  const priority    = AGG.filter(r=>r.inherentAvg >= 9 && r.controlAvg < 3).length;
-  const wellCtrl    = AGG.filter(r=>r.controlAvg >= 3).length;
+  const allBUs      = [...new Set(AGG.map(r=>r.bu).filter(Boolean))];
+  const nBUs        = allBUs.length;
+  const critical    = AGG.filter(r=>r.inherentAvg>=12).length;
+  const high        = AGG.filter(r=>r.inherentAvg>=9 && r.inherentAvg<12).length;
+  const priority    = AGG.filter(r=>r.inherentAvg>=9 && r.controlAvg<3).length;
+  const wellCtrl    = AGG.filter(r=>r.controlAvg>=3).length;
   const totalSubs   = responses.length;
   const openSess    = sessions.filter(s=>s.status==='open').length;
+  const doneSess    = sessions.filter(s=>s.consolidatedAt).length;
   const avgInherent = total ? (AGG.reduce((s,r)=>s+r.inherentAvg,0)/total).toFixed(1) : '—';
   const avgControl  = total ? (AGG.reduce((s,r)=>s+r.controlAvg,0)/total).toFixed(1) : '—';
 
-  // Helper: what % of total is this number
-  const pctOf = (n) => total > 0 ? ` (${Math.round(n/total*100)}%)` : '';
+  // Universe coverage
+  const universeEntries = JSON.parse(localStorage.getItem('erm_universe_v1')||'[]');
+  const universeSize    = universeEntries.length || 36;
+  const scoredUCodes    = new Set(
+    AGG.map(r=>(r.riskUniverse||'').split('_')[0])
+       .filter(c=>c && universeEntries.some(u=>u.code===c))
+  );
+  const coverageNum = Math.min(scoredUCodes.size, universeSize);
+  const coveragePct = universeSize>0 ? Math.round(coverageNum/universeSize*100) : 0;
 
+  const pctOf = (n) => total>0 ? Math.round(n/total*100)+'%' : '0%';
+
+  // ── 8 tiles — 4×2 ────────────────────────────────────────────────
   const tiles = [
+    // ROW 1
     {
       num: total,
-      lbl: 'Risks in Register',
-      sub: `Avg inherent score: ${avgInherent} / 16`,
+      lbl: 'Total Risks',
+      sub: `Across ${nBUs} business unit${nBUs!==1?'s':''}`,
+      detail: `Avg inherent ${avgInherent}/16`,
       icon: '📋',
-      bg: 'linear-gradient(135deg,#102A43,#1A3A5C)',
-      tooltip: 'Total number of risks currently in your ERM register'
+      bg: 'linear-gradient(135deg,#102A43 0%,#1F4068 100%)',
+      bar: null,
+      tooltip: 'Total BU-specific risk entries across all business units'
+    },
+    {
+      num: nBUs,
+      lbl: 'Business Units',
+      sub: `${doneSess} session${doneSess!==1?'s':''} consolidated`,
+      detail: `${openSess} open · ${sessions.length} total sessions`,
+      icon: '🏢',
+      bg: 'linear-gradient(135deg,#2C5282 0%,#1A365D 100%)',
+      bar: sessions.length>0 ? {val:doneSess,max:sessions.length,color:'#80DFFF'} : null,
+      tooltip: 'Number of BUs with risk register entries and session progress'
     },
     {
       num: critical,
       lbl: 'Critical Risks',
-      sub: `Score ≥12/16 — immediate attention${pctOf(critical)}`,
+      sub: `Score ≥ 12/16 · ${pctOf(critical)} of register`,
+      detail: `${high} more rated High (9–11)`,
       icon: '🔴',
-      bg: 'linear-gradient(135deg,#D22328,#A3181C)',
-      tooltip: 'Risks with Likelihood × Impact score ≥ 12 out of 16'
+      bg: 'linear-gradient(135deg,#C0392B 0%,#922B21 100%)',
+      bar: {val:critical,max:total||1,color:'#FF8080'},
+      tooltip: 'Risks with Likelihood × Impact ≥ 12 — require immediate attention'
     },
     {
       num: priority,
       lbl: 'Priority to Act',
-      sub: `High inherent score + weak controls${pctOf(priority)}`,
+      sub: `High inherent + weak controls`,
+      detail: `${pctOf(priority)} of register · act now`,
       icon: '⚠️',
-      bg: 'linear-gradient(135deg,#E67E22,#C0661C)',
-      tooltip: 'Risks scoring ≥9 inherent AND control level below "Managed" — most urgent for mitigation'
+      bg: 'linear-gradient(135deg,#D35400 0%,#A04000 100%)',
+      bar: {val:priority,max:total||1,color:'#FFB347'},
+      tooltip: 'Risks ≥9 inherent AND control below Managed — most urgent to address'
     },
+    // ROW 2
     {
       num: wellCtrl,
       lbl: 'Well Controlled',
-      sub: `Control level ≥ Managed (3/4)${pctOf(wellCtrl)}`,
+      sub: `Control ≥ Managed (3/4)`,
+      detail: `${pctOf(wellCtrl)} of register · avg ${avgControl}/4`,
       icon: '✅',
-      bg: 'linear-gradient(135deg,#27AE60,#1E8B4C)',
-      tooltip: 'Risks where controls are rated "Managed & Monitored" or "Optimized"'
+      bg: 'linear-gradient(135deg,#1E8449 0%,#145A32 100%)',
+      bar: {val:wellCtrl,max:total||1,color:'#80FF80'},
+      tooltip: 'Risks rated Managed & Monitored or Optimized for control'
     },
     {
-      num: totalSubs,
-      lbl: 'Workshop Responses',
-      sub: `${openSess} session${openSess!==1?'s':''} open · avg control ${avgControl}/4`,
-      icon: '👥',
-      bg: 'linear-gradient(135deg,#643C5A,#4A2C43)',
-      tooltip: 'Total participant scoring submissions received across all sessions'
+      num: `${coveragePct}%`,
+      lbl: 'Universe Coverage',
+      sub: `${coverageNum} of ${universeSize} categories scored`,
+      detail: `${universeSize-coverageNum} categories still pending`,
+      icon: '🗺️',
+      bg: 'linear-gradient(135deg,#6C3483 0%,#4A235A 100%)',
+      bar: {val:coverageNum,max:universeSize,color:'#DA8FFF'},
+      tooltip: 'Universe categories with at least one BU entry in the register'
+    },
+    {
+      num: doneSess,
+      lbl: 'Sessions Consolidated',
+      sub: `${openSess} open · ${totalSubs} responses`,
+      detail: `${sessions.length} total sessions created`,
+      icon: '🎯',
+      bg: 'linear-gradient(135deg,#117A8B 0%,#0C5460 100%)',
+      bar: sessions.length>0 ? {val:doneSess,max:sessions.length,color:'#80DFFF'} : null,
+      tooltip: 'Workshop sessions fully consolidated into the risk register'
+    },
+    {
+      num: avgInherent,
+      lbl: 'Avg Inherent Score',
+      sub: `Out of 16 (Likelihood × Impact)`,
+      detail: (() => {
+        const v = parseFloat(avgInherent);
+        if(isNaN(v)) return 'No data yet';
+        if(v>=12) return '⚠ Group level: Critical';
+        if(v>=9)  return 'Group level: High';
+        if(v>=4)  return 'Group level: Moderate';
+        return 'Group level: Low';
+      })(),
+      icon: '📊',
+      bg: (() => {
+        const v = parseFloat(avgInherent);
+        if(isNaN(v)) return 'linear-gradient(135deg,#5D6D7E 0%,#404E5C 100%)';
+        if(v>=12) return 'linear-gradient(135deg,#C0392B 0%,#922B21 100%)';
+        if(v>=9)  return 'linear-gradient(135deg,#D35400 0%,#A04000 100%)';
+        if(v>=4)  return 'linear-gradient(135deg,#B7950B 0%,#8E750A 100%)';
+        return 'linear-gradient(135deg,#1E8449 0%,#145A32 100%)';
+      })(),
+      bar: avgInherent!=='—' ? {val:parseFloat(avgInherent),max:16,color:'#FFE680'} : null,
+      tooltip: 'Average inherent risk score across all register entries'
     },
   ];
 
   const kpiGrid = document.getElementById('homeKpiGrid');
   if(kpiGrid){
-    kpiGrid.innerHTML = tiles.map(t=>`
+    kpiGrid.innerHTML = tiles.map(t=>{
+      const barHtml = t.bar
+        ? `<div style="margin-top:10px;height:3px;background:rgba(255,255,255,0.2);border-radius:2px;overflow:hidden;"><div style="height:100%;width:${Math.min(Math.round(t.bar.val/t.bar.max*100),100)}%;background:${t.bar.color};border-radius:2px;"></div></div>`
+        : '<div style="margin-top:13px;"></div>';
+      return `
       <div class="kpi-tile" style="background:${t.bg};" title="${escapeXml(t.tooltip)}">
         <div class="kpi-top">
           <div class="kpi-num">${t.num}</div>
@@ -5081,8 +5160,11 @@ function renderHomeDashboard(responses, sessions){
         <div>
           <div class="kpi-lbl">${t.lbl}</div>
           <div class="kpi-sub">${t.sub}</div>
+          <div style="font-size:10px;opacity:0.6;margin-top:2px;line-height:1.3;">${t.detail}</div>
         </div>
-      </div>`).join('');
+        ${barHtml}
+      </div>`;
+    }).join('');
   }
 
   // ── BU cards ────────────────────────────────────────────────────────
@@ -5090,37 +5172,55 @@ function renderHomeDashboard(responses, sessions){
   if(buGrid){
     const bus = [...new Set(AGG.map(r=>r.bu).filter(Boolean))].sort();
     if(bus.length === 0){
-      buGrid.innerHTML = '<div class="sub" style="padding:16px;">No Business Unit data yet.</div>';
+      buGrid.innerHTML = '<div class="sub" style="padding:16px;">No Business Unit data yet. Complete a workshop session and consolidate scores.</div>';
     } else {
       buGrid.innerHTML = bus.map(bu=>{
         const buRisks = AGG.filter(r=>r.bu===bu);
-        const crit = buRisks.filter(r=>r.inherentAvg>=12).length;
-        const prio = buRisks.filter(r=>r.inherentAvg>=9 && r.controlAvg<3).length;
-        const avgCtrl = buRisks.length ? avg(buRisks.map(r=>r.controlAvg)) : 0;
+        const crit    = buRisks.filter(r=>r.inherentAvg>=12).length;
+        const high    = buRisks.filter(r=>r.inherentAvg>=9 && r.inherentAvg<12).length;
+        const prio    = buRisks.filter(r=>r.inherentAvg>=9 && r.controlAvg<3).length;
+        const avgInh  = buRisks.length ? (buRisks.reduce((s,r)=>s+r.inherentAvg,0)/buRisks.length).toFixed(1) : '—';
+        const avgCtrl = buRisks.length ? (buRisks.reduce((s,r)=>s+r.controlAvg,0)/buRisks.length) : 0;
         const ctrlPct = Math.round(((avgCtrl-1)/3)*100);
         const ctrlColor = ctrlPct>=66 ? '#27AE60' : ctrlPct>=33 ? '#E67E22' : '#E74C3C';
         const ctrlLabel = ctrlPct>=66 ? 'Good' : ctrlPct>=33 ? 'Moderate' : 'Weak';
+        // Last consolidated date
+        const buSessions = sessions.filter(s=>s.bu===bu && s.consolidatedAt);
+        const lastConsolidated = buSessions.length
+          ? new Date(Math.max(...buSessions.map(s=>new Date(s.consolidatedAt)))).toLocaleDateString()
+          : 'Not consolidated';
         return `
           <div class="bu-card">
-            <div class="bu-card-name">${escapeXml(bu)}</div>
-            <div class="bu-metric-row">
-              <span class="bu-metric-label">Total risks</span>
-              <span class="bu-metric-val" style="color:var(--navy);">${buRisks.length}</span>
+            <div class="bu-card-name" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>${escapeXml(bu)}</span>
+              <span style="font-size:11px;font-weight:400;color:var(--ink-soft);">${buRisks.length} risks</span>
             </div>
             <div class="bu-metric-row">
-              <span class="bu-metric-label">Critical (score ≥12/16)</span>
-              <span class="bu-metric-val" style="color:${crit>0?'#E74C3C':'#27AE60'};">${crit}</span>
+              <span class="bu-metric-label">🔴 Critical (≥12/16)</span>
+              <span class="bu-metric-val" style="color:${crit>0?'#E74C3C':'#27AE60'};font-weight:700;">${crit}</span>
             </div>
             <div class="bu-metric-row">
-              <span class="bu-metric-label">Priority to act</span>
+              <span class="bu-metric-label">🟠 High (9-11)</span>
+              <span class="bu-metric-val" style="color:${high>0?'#E67E22':'#27AE60'};">${high}</span>
+            </div>
+            <div class="bu-metric-row">
+              <span class="bu-metric-label">⚠ Priority to act</span>
               <span class="bu-metric-val" style="color:${prio>0?'#E67E22':'#27AE60'};">${prio}</span>
+            </div>
+            <div class="bu-metric-row">
+              <span class="bu-metric-label">Avg inherent score</span>
+              <span class="bu-metric-val" style="font-family:var(--font-mono);font-weight:700;">${avgInh}/16</span>
             </div>
             <div class="bu-metric-row" style="margin-top:4px;">
               <span class="bu-metric-label">Control effectiveness</span>
               <span class="bu-metric-val" style="color:${ctrlColor};">${ctrlLabel} · ${ctrlPct}%</span>
             </div>
             <div class="bu-progress-bar">
-              <div class="bu-progress-fill" style="width:${ctrlPct}%; background:${ctrlColor};"></div>
+              <div class="bu-progress-fill" style="width:${Math.max(ctrlPct,2)}%; background:${ctrlColor};"></div>
+            </div>
+            <div class="bu-metric-row" style="margin-top:6px; padding-top:6px; border-top:1px solid var(--line);">
+              <span class="bu-metric-label" style="color:var(--ink-soft);">Last consolidated</span>
+              <span style="font-size:11px;color:${lastConsolidated!=='Not consolidated'?'#27AE60':'#E67E22'};">${lastConsolidated}</span>
             </div>
           </div>`;
       }).join('');
@@ -5357,37 +5457,39 @@ function renderStatStrip(nResp){
    Returns synthetic AGG-compatible entries labelled by universe code.
    ===================================================================== */
 function getGroupAverageAgg(filterState){
-  // Start from the full AGG (or family/status filtered, but NOT BU filtered)
   const base = AGG.filter(r=>{
     if(filterState.family && r.groupFamily!==filterState.family) return false;
     if(filterState.status && r.status!==filterState.status) return false;
+    // CRITICAL: only include risks that have a valid universe code
+    // Skip blank entries (R01-ITA with no riskUniverse) — they pollute the group avg
+    const uCode = (r.riskUniverse||'').split('_')[0];
+    if(!uCode || uCode === r.id) return false; // no universe code = skip
     return true;
   });
 
-  // Group by universe code (first part before '_')
+  // Group by universe code
   const byUniverse = new Map();
   base.forEach(r=>{
-    const uCode = (r.riskUniverse||'').split('_')[0] || r.id;
+    const uCode = (r.riskUniverse||'').split('_')[0];
     if(!byUniverse.has(uCode)) byUniverse.set(uCode, []);
     byUniverse.get(uCode).push(r);
   });
 
-  // Average each group
   const avgEntries = [];
   byUniverse.forEach((risks, uCode)=>{
     const n = risks.length;
-    const avgL = risks.reduce((s,r)=>s+r.likelihoodAvg, 0) / n;
-    const avgI = risks.reduce((s,r)=>s+r.impactAvg, 0) / n;
-    const avgC = risks.reduce((s,r)=>s+r.controlAvg, 0) / n;
+    // Use actual score fields, not avg (which may be seeded)
+    const avgL = risks.reduce((s,r)=>s+(r.likelihoodAvg||r.likelihoodScore||2), 0) / n;
+    const avgI = risks.reduce((s,r)=>s+(r.impactAvg||r.impactScore||2), 0) / n;
+    const avgC = risks.reduce((s,r)=>s+(r.controlAvg||r.controlScore||2), 0) / n;
     const inhAvg = avgL * avgI;
     const buList = [...new Set(risks.map(r=>r.bu).filter(Boolean))].join(', ');
-    // Build a synthetic entry compatible with renderGradientHeatmap / renderGridHeatmap
     avgEntries.push({
       id: uCode,
       title: risks[0]?.riskUniverse?.split('_').slice(1).join('_') || uCode,
       riskUniverse: risks[0]?.riskUniverse || uCode,
       groupFamily: risks[0]?.groupFamily || '',
-      bu: buList,            // show all BUs contributing
+      bu: buList,
       likelihoodAvg: avgL,
       impactAvg: avgI,
       controlAvg: avgC,
@@ -5395,9 +5497,9 @@ function getGroupAverageAgg(filterState){
       targetLikelihoodScore: risks[0]?.targetLikelihoodScore || 0,
       targetImpactScore: risks[0]?.targetImpactScore || 0,
       targetControlScore: risks[0]?.targetControlScore || 0,
-      n,                     // number of BUs contributing
+      n,
       usingSeed: risks.every(r=>r.usingSeed),
-      _groupAvg: true,       // flag so labels show universe code not risk ID
+      _groupAvg: true,
       _buCount: n
     });
   });
@@ -5837,13 +5939,33 @@ async function renderLandscapeChart(){
   if(!container || !AGG.length) return;
 
   // Group risks by the chosen dimension
+  // IMPORTANT: in Universe mode, deduplicate by universe CODE (not the full key)
+  // so R01-FRA and R01-IND with same universe A1 count as ONE universe entry
+  // In Family mode, skip risks with no groupFamily (don't show "Unclassified" unless all are unclassified)
   const groupMap = new Map();
   AGG.forEach(r=>{
-    const rawKey = landscapeMode === 'family' ? r.groupFamily : r.riskUniverse;
-    const key = rawKey || 'Unclassified';
+    let key;
+    if(landscapeMode === 'family'){
+      key = r.groupFamily || null;
+      if(!key) return; // skip unclassified in family mode
+    } else {
+      // Universe mode: group by universe CODE only (first part before '_')
+      const uCode = (r.riskUniverse||'').split('_')[0];
+      if(!uCode || uCode === r.id) return; // skip blank/orphan entries
+      key = r.riskUniverse || uCode; // use full universe string for label
+    }
     if(!groupMap.has(key)) groupMap.set(key, []);
     groupMap.get(key).push(r);
   });
+
+  // If all risks are unclassified in family mode, show unclassified
+  if(groupMap.size === 0 && landscapeMode === 'family'){
+    AGG.forEach(r=>{
+      const key = r.groupFamily || 'Unclassified';
+      if(!groupMap.has(key)) groupMap.set(key, []);
+      groupMap.get(key).push(r);
+    });
+  }
 
   const groups = Array.from(groupMap.entries()).map(([key, risks], i)=>{
     const parts = key.split('_');
@@ -6074,7 +6196,18 @@ document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn=>{
 });
 
 function renderGlobalRisksTable(){
-  const rows = AGG.filter(r => (r.groupFamily || '').startsWith('G1_'));
+  // G1 = Risk of Debarment — includes risks where:
+  // 1. groupFamily starts with G1_, OR
+  // 2. riskUniverse starts with B (B1_Corruption, B2_, B3_, B4_, B5_, B6_)
+  //    as these are mapped to G1 in the Group Universe Map
+  const rows = AGG.filter(r => {
+    const gf = r.groupFamily || '';
+    const ru = r.riskUniverse || '';
+    const ruCode = ru.split('_')[0];
+    // G1 mapped universe codes from SEED_GROUP_UNIVERSE_MAP
+    const g1Codes = ['B1','B2','B3','B4','B5','B6'];
+    return gf.startsWith('G1_') || g1Codes.includes(ruCode);
+  });
   const tbody = document.querySelector('#globalRisksTable tbody');
   const table = document.getElementById('globalRisksTable');
   const emptyState = document.getElementById('globalRisksEmptyState');
@@ -6088,16 +6221,43 @@ function renderGlobalRisksTable(){
   table.classList.remove('hidden');
   emptyState.classList.add('hidden');
 
-  tbody.innerHTML = rows.map(r=>`
+  // Group by universe category, show all BUs
+  const byUniverse = new Map();
+  rows.forEach(r=>{
+    const key = r.riskUniverse || r.id;
+    if(!byUniverse.has(key)) byUniverse.set(key, []);
+    byUniverse.get(key).push(r);
+  });
+
+  tbody.innerHTML = [...byUniverse.entries()].map(([uKey, risks])=>{
+    const buBadges = risks.map(r=>
+      `<span style="font-family:var(--font-mono);font-size:10px;padding:1px 6px;background:var(--paper);border:1px solid var(--line);border-radius:8px;margin-right:4px;">${escapeXml(r.bu||'—')}</span>`
+    ).join('');
+    const avgL = (risks.reduce((s,r)=>s+r.likelihoodAvg,0)/risks.length).toFixed(1);
+    const avgI = (risks.reduce((s,r)=>s+r.impactAvg,0)/risks.length).toFixed(1);
+    const avgInh = (risks.reduce((s,r)=>s+r.inherentAvg,0)/risks.length).toFixed(1);
+    const inhNum = parseFloat(avgInh);
+    const zoneColor = inhNum>=12?'#E74C3C':inhNum>=9?'#E67E22':inhNum>=4?'#F1C40F':'#27AE60';
+    const firstRisk = risks[0];
+    const uParts = uKey.split('_');
+    const uCode = uParts[0];
+    const uLabel = uParts.slice(1).join('_') || uKey;
+    return `
     <tr>
-      <td>${escapeXml(r.riskUniverse)}</td>
-      <td><b>${escapeXml(r.title)}</b></td>
-      <td style="max-width:420px; line-height:1.5; color:var(--ink-soft); font-size:13px;">${escapeXml(r.description || '')}</td>
-      <td class="row-actions">
-        <button class="icon-btn global-risk-edit-btn" data-id="${escapeXml(r.id)}">Edit</button>
+      <td style="font-family:var(--font-mono);font-weight:700;font-size:11px;white-space:nowrap;">${escapeXml(uCode)}</td>
+      <td><b>${escapeXml(firstRisk.title || uLabel)}</b></td>
+      <td style="max-width:300px; line-height:1.5; color:var(--ink-soft); font-size:12px;">${escapeXml(firstRisk.description||'')}</td>
+      <td>${buBadges}</td>
+      <td style="text-align:center;font-family:var(--font-mono);">${avgL}</td>
+      <td style="text-align:center;font-family:var(--font-mono);">${avgI}</td>
+      <td style="text-align:center;">
+        <span style="font-family:var(--font-mono);font-weight:700;padding:3px 8px;background:${zoneColor}22;color:${zoneColor};border-radius:6px;border:1px solid ${zoneColor}44;">${avgInh}</span>
       </td>
-    </tr>
-  `).join('');
+      <td class="row-actions">
+        ${risks.map(r=>`<button class="icon-btn global-risk-edit-btn" data-id="${escapeXml(r.id)}" title="Edit ${escapeXml(r.bu||'')} entry">${escapeXml(r.bu||'Edit')}</button>`).join('')}
+      </td>
+    </tr>`;
+  }).join('');
 
   tbody.querySelectorAll('.global-risk-edit-btn').forEach(btn=>{
     btn.addEventListener('click', (e)=> openEditPanel(e.target.dataset.id));
@@ -6221,6 +6381,13 @@ async function renderSessionsTable(){
       : '<span style="color:var(--ink-soft); font-size:11px;">—</span>';
     // Show consolidate button if session has a BU (responses may be in live_progress)
     const canConsolidate = s.bu;
+    const consolidatedBadge = s.consolidatedAt
+      ? `<span style="font-size:10px; padding:2px 7px; background:#E8F8EF; color:#27AE60; border-radius:10px; font-weight:700; white-space:nowrap;">✓ ${new Date(s.consolidatedAt).toLocaleDateString()}</span>`
+      : (s.bu ? `<span style="font-size:10px; padding:2px 7px; background:#FEF3E7; color:#E67E22; border-radius:10px; font-weight:700;">Pending</span>` : '');
+    const consolidateLabel = s.consolidatedAt ? '↻ Re-consolidate' : '⊕ Consolidate';
+    const consolidateBtnStyle = s.consolidatedAt
+      ? 'color:#856404; font-weight:700;'
+      : 'color:var(--systra-plum); font-weight:700;';
     return `
     <tr data-session-id="${escapeXml(s.id)}">
       <td><b>${escapeXml(s.label)}</b><div style="color:var(--ink-soft); font-size:11px; margin-top:2px;">${escapeXml(s.id)}</div></td>
@@ -6228,10 +6395,10 @@ async function renderSessionsTable(){
       <td>${modeTag}</td>
       <td>${dateStr}</td>
       <td><span class="badge-n">${count}</span></td>
-      <td>${statusTag}</td>
+      <td style="white-space:nowrap;">${statusTag} ${consolidatedBadge}</td>
       <td class="row-actions">
         <button class="icon-btn view-session-btn">View</button>
-        ${canConsolidate ? '<button class="icon-btn consolidate-session-btn" style="color:var(--systra-plum); font-weight:700;">⊕ Consolidate</button>' : ''}
+        ${canConsolidate ? `<button class="icon-btn consolidate-session-btn" style="${consolidateBtnStyle}">${consolidateLabel}</button>` : ''}
         ${!s.bu ? '<button class="icon-btn assign-bu-btn" style="color:var(--systra-steel-blue);">+ Assign BU</button>' : ''}
         <button class="icon-btn rename-session-btn">Rename</button>
         <button class="icon-btn toggle-session-btn">${s.status === 'closed' ? 'Reopen' : 'Close'}</button>
@@ -6421,7 +6588,10 @@ async function startLiveCurrentRiskPanel(sessionId, risks){
       const rawUniverse = risk.riskUniverse || '';
       const uParts = rawUniverse.split('_');
       universeEl.textContent = uParts.length > 1 ? `${uParts[0]} · ${uParts.slice(1).join('_')}` : rawUniverse;
-      descEl.textContent = risk.description || '';
+      // Description: use risk.description, fall back to universe defaults
+      const _uCode = (risk.riskUniverse||risk.id||'').split('_')[0];
+      const _uDef = UniverseDefaultsRegistry.getAll();
+      descEl.textContent = risk.description || (_uDef[_uCode]?.description) || '';
       progressEl.textContent = `Risk ${idx+1} of ${total}`;
       liveProgressPanelUnsub = LiveProgress.listenForRisk(sessionId, risk.id, (progressDocs)=>{
         document.getElementById('liveCurrentRiskCount').textContent = progressDocs.length;
@@ -6442,19 +6612,30 @@ async function startLiveListener(sessionId){
   liveSelectedSessionId = sessionId;
   const dot = document.getElementById('liveConnectionDot');
   const label = document.getElementById('liveConnectionLabel');
-  const allRisks = await RiskRegistry.getAll();
+
+  // Build universe-based risks for the facilitator panel
+  // (same template participants use — one entry per universe category)
+  const universeEntries = await UniverseRegistry.getAll();
+  const uDefaults = UniverseDefaultsRegistry.getAll();
+  const universeRisks = universeEntries.map(u=>{
+    const def = uDefaults[u.code] || {};
+    return {
+      id: u.code,
+      title: def.title || u.label,
+      description: def.description || '',
+      riskUniverse: `${u.code}_${u.label}`,
+      groupFamily: GroupUniverseMapRegistry.getFamilyForUniverse(u.code) || ''
+    };
+  });
+  // Fall back to register if universe empty
+  const allRisks = universeRisks.length > 0 ? universeRisks : await RiskRegistry.getAll();
 
   const sessions = await SessionRegistry.getAll();
   const session = sessions.find(s=>s.id===sessionId);
-
-  // Use the risk count from the universe (all risks that should be scored)
-  // NOT the full register count (which includes multiple BU entries for same universe)
-  // For a BU session, count = universe size. For legacy sessions = all risks.
   const sessionBU = session?.bu || '';
-  const sessionRisks = sessionBU
-    ? allRisks.filter(r=>r.bu===sessionBU)  // BU-specific risks
-    : allRisks;
-  const risks = sessionRisks.length > 0 ? sessionRisks : allRisks;
+
+  // Risk count for live stats: use universe size
+  const risks = allRisks;
 
   if(session && session.mode === 'live'){
     await startLiveCurrentRiskPanel(sessionId, allRisks);
@@ -6707,7 +6888,20 @@ async function openConsolidationPanel(sessionId){
 
   const bu = consolidationSession.bu;
 
-  // Get submitted responses first
+  // Check if already consolidated — warn before proceeding
+  if(consolidationSession.consolidatedAt){
+    const consolidatedDate = new Date(consolidationSession.consolidatedAt).toLocaleDateString();
+    const proceed = confirm(
+      `⚠ This session was already consolidated on ${consolidatedDate} for BU: ${bu}.\n\n` +
+      `Running it again will:\n` +
+      `• UPDATE existing register scores for ${bu}\n` +
+      `• Add another history entry to each risk\n` +
+      `• NOT create duplicate risk entries\n\n` +
+      `Click OK only if you want to revise the scores.\n` +
+      `Click Cancel to go back.`
+    );
+    if(!proceed) return;
+  }
   let responses = await Store.getBySession(sessionId);
 
   // If no fully-submitted responses, pull from erm_live_progress (in-progress scores)
@@ -6962,11 +7156,28 @@ document.getElementById('applyConsolidationBtn')?.addEventListener('click', asyn
 
   const allRisks = await RiskRegistry.getAll();
   const universe = await UniverseRegistry.getAll();
+  const universeByCode = new Map(universe.map(e=>[e.code, e]));
+  const defaults = UniverseDefaultsRegistry.getAll();
   const now = new Date().toISOString();
+
+  // Check for existing BU entries — warn if already consolidated
+  const existingBURisks = allRisks.filter(r=>r.bu===bu && r.riskUniverse);
+  const alreadyConsolidated = existingBURisks.length > 0;
+
+  if(alreadyConsolidated){
+    const choice = confirm(
+      `BU "${bu}" already has ${existingBURisks.length} risk entries in the register.\n\n` +
+      `Click OK to UPDATE existing entries (scores will be updated, history saved).\n` +
+      `Click Cancel to abort.`
+    );
+    if(!choice) return;
+  } else {
+    if(!confirm(`Create ${rows.length} new risk entries for BU: ${bu}?`)) return;
+  }
 
   // Find existing BU risks and determine next sequence number
   const buRisks = allRisks.filter(r=>r.bu===bu);
-  const buNums  = buRisks.map(r=>{
+  const buNums = buRisks.map(r=>{
     const m = /^R(\d+)-/.exec(r.id);
     return m ? parseInt(m[1],10) : 0;
   });
@@ -6974,21 +7185,33 @@ document.getElementById('applyConsolidationBtn')?.addEventListener('click', asyn
 
   const updates = [];
   rows.forEach(row=>{
-    const riskId   = row.dataset.riskId;
-    const finalL   = parseInt(row.querySelector('.final-l').value);
-    const finalI   = parseInt(row.querySelector('.final-i').value);
-    const finalC   = parseInt(row.querySelector('.final-c').value);
+    const riskId = row.dataset.riskId;
+    const finalL = parseInt(row.querySelector('.final-l').value);
+    const finalI = parseInt(row.querySelector('.final-i').value);
+    const finalC = parseInt(row.querySelector('.final-c').value);
 
-    // Find existing register entry for this BU+universe combo
+    // Find universe entry
+    const uEntry = universeByCode.get(riskId);
+    // Get description from universe defaults (the rich descriptions)
+    const uDefault = defaults[riskId] || {};
+    const title = uDefault.title || uEntry?.label || riskId;
+    const description = uDefault.description || '';
+    const groupFamily = (() => {
+      // Find from the Group Universe Map
+      const map = GroupUniverseMapRegistry.getAll();
+      for(const [fk, codes] of Object.entries(map)){
+        if(codes.includes(riskId)) return fk;
+      }
+      return '';
+    })();
+
+    // Find existing register entry for this BU + universe combo
     const existing = allRisks.find(r=>
-      r.bu===bu && (r.riskUniverse?.startsWith(riskId+'_') || r.id===riskId)
+      r.bu===bu && r.riskUniverse?.startsWith(riskId+'_')
     );
 
-    // Find universe entry for metadata
-    const uEntry = universe.find(u=>u.code===riskId);
-
     if(existing){
-      // UPDATE — save old scores to history before overwriting
+      // UPDATE — save old scores to history
       const history = existing.scoreHistory || [];
       history.push({
         sessionId: consolidationSessionId,
@@ -7000,6 +7223,9 @@ document.getElementById('applyConsolidationBtn')?.addEventListener('click', asyn
       });
       updates.push({
         ...existing,
+        title: existing.title || title,  // keep existing title if set
+        description: existing.description || description,
+        groupFamily: existing.groupFamily || groupFamily,
         likelihoodScore: finalL,
         impactScore: finalI,
         controlScore: finalC,
@@ -7013,11 +7239,11 @@ document.getElementById('applyConsolidationBtn')?.addEventListener('click', asyn
       const newId = `R${String(nextNum).padStart(2,'0')}-${bu}`;
       updates.push({
         id: newId,
-        title: uEntry?.label || riskId,
+        title,
+        description,
         bu,
         riskUniverse: uEntry ? `${uEntry.code}_${uEntry.label}` : riskId,
-        groupFamily: '',
-        description: '',
+        groupFamily,
         owner: '',
         status: 'Ongoing',
         likelihoodScore: finalL,
@@ -7030,9 +7256,18 @@ document.getElementById('applyConsolidationBtn')?.addEventListener('click', asyn
     }
   });
 
-  // Upsert all
+  // Upsert all updates to the register
   for(const r of updates){
     await RiskRegistry.upsert(r);
+  }
+
+  // Mark the session as consolidated so we can warn if it's run again
+  const allSessions = await sessionBackend.getAll();
+  const sIdx = allSessions.findIndex(s=>s.id===consolidationSessionId);
+  if(sIdx>=0){
+    allSessions[sIdx].consolidatedAt = now;
+    allSessions[sIdx].consolidatedBU = bu;
+    await sessionBackend.saveAll(allSessions);
   }
 
   document.getElementById('consolidationPanel').classList.add('hidden');
@@ -8674,7 +8909,21 @@ function stopFacilitatorPanel(){
 async function startFacilitatorPanel(sessionId){
   document.getElementById('facilitatorPanel').style.display = '';
   if(facilitatorUnsubscribe){ facilitatorUnsubscribe(); facilitatorUnsubscribe = null; }
-  facilitatorRisks = await RiskRegistry.getAll();
+
+  // Use universe as the scoring template — same 32 risks participants see
+  const universeEntries = await UniverseRegistry.getAll();
+  const uDefaults = UniverseDefaultsRegistry.getAll();
+  facilitatorRisks = universeEntries.map(u=>{
+    const def = uDefaults[u.code] || {};
+    return {
+      id: u.code,
+      title: def.title || u.label,
+      description: def.description || '',
+      riskUniverse: `${u.code}_${u.label}`,
+      groupFamily: GroupUniverseMapRegistry.getFamilyForUniverse(u.code) || ''
+    };
+  });
+  if(!facilitatorRisks.length) facilitatorRisks = await RiskRegistry.getAll();
 
   // Guard: a live session created before Firebase connected won't have a
   // control doc yet — create one now rather than leaving the panel stuck.
@@ -8718,7 +8967,9 @@ function renderFacilitatorPanel(control){
   } else {
     indexEl.textContent = idx+1;
     titleEl.textContent = risk.title;
-    descEl.textContent = risk.description || '';
+    const _ufCode = (risk.riskUniverse||risk.id||'').split('_')[0];
+    const _ufDef = UniverseDefaultsRegistry.getAll();
+    descEl.textContent = risk.description || (_ufDef[_ufCode]?.description) || '';
     const universe = splitCodeLabel(risk.riskUniverse);
     tagRow.innerHTML = universe.label
       ? `<span class="facilitator-tag">${escapeXml(universe.code ? `${universe.code} · ${universe.label}` : universe.label)}</span>`
@@ -8973,9 +9224,10 @@ function renderQuestion(){
   document.getElementById('liveSubmittedNote').classList.add('hidden');
 
   const risk = surveyState.risks[surveyState.idx];
-  document.getElementById('qId').textContent = `${risk.id} · ${risk.groupFamily}`;
+  document.getElementById('qId').textContent = `${risk.id} · ${risk.groupFamily||risk.riskUniverse||''}`;
   document.getElementById('qTitle').textContent = risk.title;
-  document.getElementById('qDesc').textContent = risk.description;
+  const _uCode1=((risk.riskUniverse||'').split('_')[0]); const _uDef1=UniverseDefaultsRegistry.getAll();
+  document.getElementById('qDesc').textContent = risk.description||(_uDef1[_uCode1]?.description)||'';
 
   buildOptionGrid('optLikelihood', SCALES.Likelihood, 'likelihood', (score)=>{
     surveyState.answers[risk.id] = surveyState.answers[risk.id] || {};
@@ -9067,9 +9319,10 @@ function renderLiveQuestion(control){
   document.getElementById('selfPacedNavRow').classList.add('hidden');
   document.getElementById('liveNavRow').classList.remove('hidden');
 
-  document.getElementById('qId').textContent = `${risk.id} · ${risk.groupFamily}`;
+  document.getElementById('qId').textContent = `${risk.id} · ${risk.groupFamily||risk.riskUniverse||''}`;
   document.getElementById('qTitle').textContent = risk.title;
-  document.getElementById('qDesc').textContent = risk.description;
+  const _uCode2=((risk.riskUniverse||'').split('_')[0]); const _uDef2=UniverseDefaultsRegistry.getAll();
+  document.getElementById('qDesc').textContent = risk.description||(_uDef2[_uCode2]?.description)||'';
 
   buildOptionGrid('optLikelihood', SCALES.Likelihood, 'likelihood', (score)=>{
     surveyState.answers[risk.id] = surveyState.answers[risk.id] || {};
@@ -9145,17 +9398,39 @@ document.getElementById('liveSubmitBtn').addEventListener('click', async ()=>{
 });
 
 document.getElementById('startSurveyBtn').addEventListener('click', async ()=>{
-  const risks = await RiskRegistry.getAll();
+  // Load universe as the scoring template — participants score each universe
+  // category once, not all 64 BU-specific register entries
+  const universeEntries = await UniverseRegistry.getAll();
+  const uDefaults = UniverseDefaultsRegistry.getAll();
+
+  // Build scoring risks from universe: one entry per category with
+  // the rich title and description from universe defaults
+  let scoringRisks = universeEntries.map(u=>{
+    const def = uDefaults[u.code] || {};
+    return {
+      id: u.code,
+      title: def.title || u.label,
+      description: def.description || '',
+      riskUniverse: `${u.code}_${u.label}`,
+      groupFamily: GroupUniverseMapRegistry.getFamilyForUniverse(u.code) || '',
+      bu: '',
+      status: 'Ongoing'
+    };
+  });
+
+  // If universe is empty fall back to register risks
+  if(!scoringRisks.length){
+    scoringRisks = await RiskRegistry.getAll();
+  }
+
   const preservedSessionId = surveyState.sessionId;
   const preservedSession = surveyState.session;
   surveyState = {idx:0, name: document.getElementById('participantName').value.trim(),
                  bu: document.getElementById('participantBU').value.trim(),
-                 sessionId: preservedSessionId, session: preservedSession, answers:{}, risks};
+                 sessionId: preservedSessionId, session: preservedSession,
+                 answers:{}, risks: scoringRisks};
 
   if(preservedSession && preservedSession.mode === 'live'){
-    // Facilitator-paced: stop waiting for a manual click and start listening
-    // to the LiveControl doc — every subsequent screen change is driven by
-    // the facilitator, not by this participant's own Next/Back taps.
     if(liveControlUnsub) liveControlUnsub();
     const initial = await LiveControl.get(surveyState.sessionId);
     renderLiveQuestion(initial);

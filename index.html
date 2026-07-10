@@ -1158,7 +1158,8 @@ table.risk-table select.score-select{
           <h2>Risk Universe — Default Titles &amp; Descriptions</h2>
           <div class="sub">Review and edit the default title and description for each of the 36 Risk Universe categories. These auto-fill the edit panel when you add a new risk or click "Apply default". Changes are saved to this browser and synced to Firestore. You can also drop your full multi-tab ERM workbook here — it automatically picks the "Risk Universe Defaults" sheet.</div>
         </div>
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn ghost sm" id="addUniverseCategoryBtn">+ Add category</button>
           <button class="btn ghost sm" id="resetUniverseDefaultsBtn">Reset all to built-in defaults</button>
           <button class="btn ghost sm" onclick="downloadUniverseDefaultsTemplate()">⬇ Download template</button>
           <button class="btn ghost sm" onclick="document.getElementById('udExcelInput').click()">📂 Upload from Excel</button>
@@ -1166,13 +1167,15 @@ table.risk-table select.score-select{
           <button class="btn sm" id="saveUniverseDefaultsBtn">Save all changes</button>
         </div>
       </div>
+      <div class="import-format-note">Universe Category is now editable below, alongside Title and Description — edits and Excel uploads update the live Risk Universe list, not just the Title/Description text. Uploading updates matching codes and adds any new ones found in the file. Use "+ Add category" for a brand-new code, or 🗑 to remove one (codes themselves aren't renamed in place, to avoid breaking risks already tagged with them).</div>
       <div style="overflow-x:auto;">
         <table class="risk-table" id="universeDefaultsTable">
           <thead><tr>
-            <th style="width:120px;">Code</th>
+            <th style="width:90px;">Code</th>
             <th style="width:220px;">Universe Category</th>
             <th style="width:220px;">Default Title</th>
             <th>Default Description</th>
+            <th style="width:40px;"></th>
           </tr></thead>
           <tbody id="universeDefaultsTbody"></tbody>
         </table>
@@ -8502,11 +8505,13 @@ function downloadGltFaTemplate(){
   ]);
 }
 
-function downloadUniverseDefaultsTemplate(){
+async function downloadUniverseDefaultsTemplate(){
   const rows = [['Code','Universe Category','Group','Default Title','Default Description']];
-  // Pre-fill with current UNIVERSE_DEFAULTS
-  SEED_UNIVERSE.forEach(u=>{
-    const d = UNIVERSE_DEFAULTS[u.code] || {title:'', description:''};
+  const liveEntries = await UniverseRegistry.getAll();
+  const liveDefaults = UniverseDefaultsRegistry.getAll();
+  const sorted = liveEntries.slice().sort((a,b)=>a.code.localeCompare(b.code, undefined, {numeric:true}));
+  sorted.forEach(u=>{
+    const d = liveDefaults[u.code] || UNIVERSE_DEFAULTS[u.code] || {title:'', description:''};
     rows.push([u.code, u.label, u.code[0], d.title, d.description]);
   });
   downloadCsv('Universe_Defaults_Template.csv', rows);
@@ -8532,7 +8537,7 @@ function handleUniverseDefaultsUpload(input){
   if(!file) return;
   if(typeof XLSX === 'undefined'){ alert('SheetJS not loaded.'); return; }
   const reader = new FileReader();
-  reader.onload = (e)=>{
+  reader.onload = async (e)=>{
     try{
       const wb   = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
       const ws   = pickSheet(wb, /universe.*default|default.*universe/i);
@@ -8565,24 +8570,46 @@ function handleUniverseDefaultsUpload(input){
         return null;
       };
       const s = rows[0];
-      const codeCol  = findCol(s,'code','riskuniversecode','universecode');
-      const titleCol = findCol(s,'title','defaulttitle');
-      const descCol  = findCol(s,'description','defaultdescription','desc');
+      const codeCol     = findCol(s,'code','riskuniversecode','universecode');
+      const categoryCol = findCol(s,'universecategory','category');
+      const titleCol    = findCol(s,'title','defaulttitle');
+      const descCol     = findCol(s,'description','defaultdescription','desc');
 
       if(!codeCol){ alert('Could not find a "Code" column. Headers found: '+Object.keys(rows[0]).join(', ')); return; }
 
-      const updated = UniverseDefaultsRegistry.getAll();
-      let count = 0;
+      const updatedDefaults = UniverseDefaultsRegistry.getAll();
+      const existingUniverse = await UniverseRegistry.getAll();
+      const universeMap = new Map(existingUniverse.map(e=>[e.code, e]));
+      let updatedCount = 0, addedCount = 0, renamedCount = 0;
+
       rows.forEach(row=>{
         const code = String(row[codeCol]||'').trim().toUpperCase();
         if(!code || !/^[A-Z]{1,3}\d{1,3}$/.test(code)) return; // skip section-header rows like "A — External context..."
         const title = titleCol ? String(row[titleCol]||'').trim() : '';
         const description = descCol ? String(row[descCol]||'').trim() : '';
-        if(title || description){ updated[code] = {title, description}; count++; }
+        const category = categoryCol ? String(row[categoryCol]||'').trim() : '';
+
+        if(title || description){ updatedDefaults[code] = {title, description}; updatedCount++; }
+
+        if(category){
+          const existing = universeMap.get(code);
+          if(!existing){
+            universeMap.set(code, {code, label: category});
+            addedCount++;
+          } else if(existing.label !== category){
+            universeMap.set(code, {...existing, label: category});
+            renamedCount++;
+          }
+        }
       });
-      UniverseDefaultsRegistry.saveAll(updated);
-      renderUniverseDefaultsTable();
-      alert('✓ Updated '+count+' universe default entries from "'+file.name+'".');
+
+      UniverseDefaultsRegistry.saveAll(updatedDefaults);
+      await UniverseRegistry.saveAll([...universeMap.values()]);
+      await renderUniverseDefaultsTable();
+      alert('✓ From "'+file.name+'":\n'
+        + updatedCount+' title/description entries updated\n'
+        + renamedCount+' category names updated\n'
+        + addedCount+' new categories added');
       input.value = '';
     } catch(err){ alert('Error: '+err.message); }
   };
@@ -8675,12 +8702,16 @@ async function renderUniverseDefaultsTable(){
     if(group !== lastGroup){
       lastGroup = group;
       const headText = SECTION_HEADINGS[group] || group;
-      heading = `<tr><td colspan="4" style="padding:12px 8px 4px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);background:#F8F9FA;border-top:2px solid var(--line);">${escapeXml(headText)}</td></tr>`;
+      heading = `<tr><td colspan="5" style="padding:12px 8px 4px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);background:#F8F9FA;border-top:2px solid var(--line);">${escapeXml(headText)}</td></tr>`;
     }
     return heading + `
       <tr data-code="${escapeXml(entry.code)}">
         <td><span class="tag">${escapeXml(entry.code)}</span></td>
-        <td style="font-size:12px; color:var(--ink-soft);">${escapeXml(entry.label)}</td>
+        <td>
+          <input type="text" class="ud-category-input" value="${escapeXml(entry.label)}"
+            placeholder="Enter category…"
+            style="width:100%;padding:7px 9px;border:1.5px solid ${entry.label?'var(--line)':'#F1C40F'};border-radius:6px;font-size:12.5px;font-family:var(--font-body);">
+        </td>
         <td>
           <input type="text" class="ud-title-input" value="${escapeXml(d.title)}"
             placeholder="Enter default title…"
@@ -8692,21 +8723,37 @@ async function renderUniverseDefaultsTable(){
             style="width:100%;padding:7px 9px;border:1.5px solid ${d.description?'var(--line)':'#F1C40F'};border-radius:6px;font-size:12px;font-family:var(--font-body);resize:vertical;line-height:1.45;"
           >${escapeXml(d.description)}</textarea>
         </td>
+        <td style="text-align:center;">
+          <button class="btn danger sm ud-delete-btn" title="Remove this category" data-code="${escapeXml(entry.code)}" style="padding:5px 8px;">🗑</button>
+        </td>
       </tr>`;
   }).join('');
+
+  tbody.querySelectorAll('.ud-delete-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>deleteUniverseCategory(btn.dataset.code));
+  });
 }
 
-document.getElementById('saveUniverseDefaultsBtn')?.addEventListener('click', ()=>{
+document.getElementById('saveUniverseDefaultsBtn')?.addEventListener('click', async ()=>{
   const tbody = document.getElementById('universeDefaultsTbody');
   if(!tbody) return;
-  const updated = {};
+  const updatedDefaults = {};
+  const universeUpdates = [];
   tbody.querySelectorAll('tr[data-code]').forEach(row=>{
     const code = row.dataset.code;
     const title = row.querySelector('.ud-title-input')?.value.trim() || '';
     const description = row.querySelector('.ud-desc-input')?.value.trim() || '';
-    updated[code] = {title, description};
+    const label = row.querySelector('.ud-category-input')?.value.trim() || code;
+    updatedDefaults[code] = {title, description};
+    universeUpdates.push({code, label});
   });
-  UniverseDefaultsRegistry.saveAll(updated);
+  UniverseDefaultsRegistry.saveAll(updatedDefaults);
+  // Persist Category edits — de-duplicated by code (fixes any pre-existing
+  // duplicate-code rows automatically; last row for a given code wins).
+  const dedupedMap = new Map();
+  universeUpdates.forEach(u=>dedupedMap.set(u.code, u));
+  await UniverseRegistry.saveAll([...dedupedMap.values()]);
+  await renderUniverseDefaultsTable();
   // Flash the save button to confirm
   const btn = document.getElementById('saveUniverseDefaultsBtn');
   const orig = btn.textContent;
@@ -8716,10 +8763,44 @@ document.getElementById('saveUniverseDefaultsBtn')?.addEventListener('click', ()
   setTimeout(()=>{ btn.textContent = orig; btn.style.background=''; btn.style.borderColor=''; }, 1800);
 });
 
-document.getElementById('resetUniverseDefaultsBtn')?.addEventListener('click', ()=>{
-  if(!confirm('Reset ALL universe defaults to the built-in SYSTRA titles and descriptions? This will overwrite any custom edits.')) return;
+document.getElementById('addUniverseCategoryBtn')?.addEventListener('click', async ()=>{
+  const code = prompt('New category code (e.g. K5, L1):');
+  if(!code) return;
+  const cleanCode = code.trim().toUpperCase();
+  if(!/^[A-Z]{1,3}\d{1,3}$/.test(cleanCode)){
+    alert('Code should look like a letter (or up to 3 letters) followed by a number, e.g. K5 or L1.');
+    return;
+  }
+  const existing = await UniverseRegistry.getAll();
+  if(existing.some(e=>e.code===cleanCode)){
+    alert('Code "'+cleanCode+'" already exists. Pick a different code, or edit the existing row instead.');
+    return;
+  }
+  const label = prompt('Category name for '+cleanCode+':');
+  if(!label) return;
+  await UniverseRegistry.upsert({code: cleanCode, label: label.trim()});
+  await renderUniverseDefaultsTable();
+});
+
+async function deleteUniverseCategory(code){
+  let usageWarning = '';
+  try{
+    const risks = await RiskRegistry.getAll();
+    const usedBy = risks.filter(r=>(r.riskUniverse||'').split('_')[0]===code);
+    if(usedBy.length){
+      usageWarning = '\n\nWarning: '+usedBy.length+' risk(s) in the register currently reference "'+code+'". They will keep showing this code, but it will no longer appear in dropdowns or defaults.';
+    }
+  } catch(e){ /* ignore — registry may not be ready */ }
+  if(!confirm('Remove universe category "'+code+'"?'+usageWarning)) return;
+  await UniverseRegistry.delete(code);
+  await renderUniverseDefaultsTable();
+}
+
+document.getElementById('resetUniverseDefaultsBtn')?.addEventListener('click', async ()=>{
+  if(!confirm('Reset ALL universe categories, titles, and descriptions to the built-in SYSTRA list? This will overwrite any custom edits, additions, or deletions.')) return;
   UniverseDefaultsRegistry.saveAll(UNIVERSE_DEFAULTS);
-  renderUniverseDefaultsTable();
+  await UniverseRegistry.saveAll(SEED_UNIVERSE.map(u=>({code:u.code, label:u.label})));
+  await renderUniverseDefaultsTable();
   const btn = document.getElementById('resetUniverseDefaultsBtn');
   const orig = btn.textContent;
   btn.textContent = '✓ Reset to built-in defaults';

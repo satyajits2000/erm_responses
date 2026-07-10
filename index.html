@@ -68,7 +68,7 @@ h1.brand-title{font-family:var(--font-display); font-weight:600; font-size:34px;
 
 .brand-logos{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;}
 .brand-logos .logo-left img{height:32px; width:auto; display:block;}
-.brand-logos .logo-right img{height:38px; width:auto; display:block;}
+.brand-logos .logo-right img{height:48px; width:auto; display:block;}
 nav.tabs{display:flex; gap:2px; margin-top:18px; flex-wrap:wrap; align-items:center;}
 .admin-link{
   margin-left:auto; background:transparent; border:none; color:rgba(255,255,255,0.35);
@@ -119,10 +119,10 @@ section.active{display:block;}
 .map-card h3{font-family:var(--font-display); font-size:16px; font-weight:600; text-align:center; letter-spacing:0.02em; text-transform:uppercase; margin-bottom:10px; color:var(--navy);}
 .map-card svg{width:100%; height:auto; display:block;}
 /* ── Home tab ─────────────────────────────────────────────────── */
-.home-kpi-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px;}
-@media(max-width:1100px){.home-kpi-grid{grid-template-columns:repeat(4,1fr);}}
-@media(max-width:900px){.home-kpi-grid{grid-template-columns:repeat(2,1fr); gap:10px;}}
-@media(max-width:500px){.home-kpi-grid{grid-template-columns:repeat(2,1fr); gap:8px;}}
+.home-kpi-grid{display:block; margin-bottom:24px;}
+.home-kpi-row{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:8px;}
+@media(max-width:900px){.home-kpi-row{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:500px){.home-kpi-row{grid-template-columns:repeat(2,1fr);}}
 .kpi-tile{border-radius:12px; padding:18px 16px; color:#fff; position:relative; overflow:hidden; display:flex; flex-direction:column; justify-content:space-between; min-height:120px;}
 @media(max-width:700px){.kpi-tile{padding:13px 12px; min-height:100px; border-radius:10px;}}
 .kpi-tile .kpi-top{display:flex; justify-content:space-between; align-items:flex-start;}
@@ -550,9 +550,10 @@ table.risk-table select.score-select{
         <div class="brand-eyebrow">Enterprise Risk Management</div>
         <h1 class="brand-title">Group Risk Map</h1>
       </div>
-      <div class="session-meta">
-        Live participant average &nbsp;·&nbsp; <b id="metaResponseCount">0</b> submissions across <b id="metaSessionCount">0</b> sessions<br>
-        Last updated <b id="metaLastUpdated">—</b>
+      <div class="session-meta" style="display:none;">
+        <b id="metaResponseCount">0</b>
+        <b id="metaSessionCount">0</b>
+        <b id="metaLastUpdated">—</b>
       </div>
     </div>
     <nav class="tabs">
@@ -560,6 +561,7 @@ table.risk-table select.score-select{
       <button data-tab="heatmaps">Heat Maps</button>
       <button data-tab="register">Risk Register</button>
       <button data-tab="globalrisks">Global Risks (G1)</button>
+      <button data-tab="gltfa">GLT / FA View</button>
       <button data-tab="landscape">Risk Landscape</button>
       <button data-tab="universe" id="universeTabBtn" class="hidden">Risk Universe</button>
       <button data-tab="sessions" id="sessionsTabBtn" class="hidden">Sessions</button>
@@ -577,7 +579,7 @@ table.risk-table select.score-select{
   <!-- ===== TAB: HEATMAPS ===== -->
   <!-- ===== TAB: HOME ===== -->
   <section id="tab-home" class="active">
-    <div id="homeOrphanBanner" style="display:none; background:#FEF3E7; border:1px solid #E67E22; border-radius:8px; padding:10px 16px; margin-bottom:14px; font-size:13px; color:#7D4A00; display:flex; align-items:center; justify-content:space-between;"></div>
+    <div id="homeOrphanBanner" style="display:none; background:#FEF3E7; border:1px solid #E67E22; border-radius:8px; padding:10px 16px; margin-bottom:14px; font-size:13px; color:#7D4A00; align-items:center; justify-content:space-between;"></div>
     <div class="home-kpi-grid" id="homeKpiGrid"></div>
     <div style="font-size:11px; color:var(--ink-soft); margin:-10px 0 18px; padding:8px 12px; background:var(--paper); border-radius:6px; border:1px solid var(--line);">
       <b>Scoring scale:</b> Inherent Risk = Likelihood (1–4) × Impact (1–4) = max 16. Control Level: 1 = Informal, 2 = Defined, 3 = Managed, 4 = Optimized. &nbsp;|&nbsp; Hover over any tile for details.
@@ -600,6 +602,36 @@ table.risk-table select.score-select{
         </div>
       </div>
     </div>
+
+    <!-- ── BU Level Risks Card ── -->
+    <div class="panel" style="margin-top:18px; border-top:4px solid var(--systra-red);">
+      <div class="panel-head">
+        <div>
+          <h2 style="font-size:16px;">🏢 BU Level Risks — Top 5</h2>
+          <div class="sub">Highest inherent risk scores consolidated across all Business Units</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <select id="homeTop5BuFilter" style="font-size:11px; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink);" title="Filter Top 5 by Business Unit">
+            <option value="">All BUs</option>
+          </select>
+          <button onclick="document.querySelector('nav.tabs button[data-tab=register]')?.click()" class="btn ghost sm" style="font-size:11px;">View full table →</button>
+        </div>
+      </div>
+      <div id="homeTop5BU" style="display:grid; grid-template-columns:repeat(5,1fr); gap:12px; padding:4px 0 8px;"></div>
+    </div>
+
+    <!-- ── GLT & FA Card ── -->
+    <div class="panel" style="margin-top:16px; border-top:4px solid var(--systra-plum);">
+      <div class="panel-head">
+        <div>
+          <h2 style="font-size:16px;">📊 GLT & FA — Top 5 Consolidated Risks</h2>
+          <div class="sub">Group Leadership Team vs Functional Area consolidated scores</div>
+        </div>
+        <button onclick="document.querySelector('nav.tabs button[data-tab=gltfa]')?.click()" class="btn ghost sm" style="font-size:11px;">View full table →</button>
+      </div>
+      <div id="homeGltFaTop" style="display:grid; grid-template-columns:repeat(5,1fr); gap:12px; padding:4px 0 8px;"></div>
+    </div>
+
   </section>
 
   <section id="tab-heatmaps">
@@ -697,6 +729,7 @@ table.risk-table select.score-select{
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn ghost sm" id="addRiskRegisterBtn">+ Add new risk</button>
           <button class="btn ghost sm" id="exportCsvBtn">Export CSV</button>
+          <button class="btn ghost sm" id="importExcelBtn" title="Import risks from Excel or CSV">📂 Import Excel</button>
           <button class="btn sm" id="exportEverythingBtn">Export Everything (CSV + Heat Maps)</button>
           <button class="btn danger sm" id="bulkDeleteBtn" style="display:none;">🗑 Delete selected (<span id="bulkDeleteCount">0</span>)</button>
         </div>
@@ -772,6 +805,43 @@ table.risk-table select.score-select{
   </section>
 
   <!-- ===== TAB: RISK LANDSCAPE ===== -->
+  <section id="tab-gltfa">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>GLT / FA Risk Consolidation</h2>
+          <div class="sub">Comparison of Group Leadership Team (GLT) and Functional Area (FA) consolidated risk scores. Upload data via Admin Settings.</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn ghost sm" onclick="exportGltFaCsv()">Export CSV</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="risk-table" id="gltFaTable">
+          <thead><tr>
+            <th>#</th>
+            <th style="text-align:center;">Universe Code</th>
+            <th>Universe Title</th>
+            <th>Group Family</th>
+            <th>FA Label</th>
+            <th>GLT Label</th>
+            <th style="text-align:center;">Consol. L</th>
+            <th style="text-align:center;">L Level</th>
+            <th style="text-align:center;">Consol. I</th>
+            <th style="text-align:center;">I Level</th>
+            <th style="text-align:center;">Consol. Score</th>
+            <th style="text-align:center;">Zone</th>
+          </tr></thead>
+          <tbody id="gltFaTbody"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:20px; padding:14px; background:var(--paper); border-radius:8px; border:1px solid var(--line);">
+        <div style="font-weight:700; font-size:13px; color:var(--navy); margin-bottom:10px;">Consolidated Score Heatmap</div>
+        <div id="gltFaHeatmap" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      </div>
+    </div>
+  </section>
+
   <section id="tab-landscape">
     <div class="panel">
       <div class="panel-head">
@@ -1086,10 +1156,13 @@ table.risk-table select.score-select{
       <div class="panel-head">
         <div>
           <h2>Risk Universe — Default Titles &amp; Descriptions</h2>
-          <div class="sub">Review and edit the default title and description for each of the 36 Risk Universe categories. These auto-fill the edit panel when you add a new risk or click "Apply default". Changes are saved to this browser and synced to Firestore.</div>
+          <div class="sub">Review and edit the default title and description for each of the 36 Risk Universe categories. These auto-fill the edit panel when you add a new risk or click "Apply default". Changes are saved to this browser and synced to Firestore. You can also drop your full multi-tab ERM workbook here — it automatically picks the "Risk Universe Defaults" sheet.</div>
         </div>
         <div style="display:flex; gap:8px;">
           <button class="btn ghost sm" id="resetUniverseDefaultsBtn">Reset all to built-in defaults</button>
+          <button class="btn ghost sm" onclick="downloadUniverseDefaultsTemplate()">⬇ Download template</button>
+          <button class="btn ghost sm" onclick="document.getElementById('udExcelInput').click()">📂 Upload from Excel</button>
+          <input type="file" id="udExcelInput" accept=".xlsx,.xls" style="display:none;" onchange="handleUniverseDefaultsUpload(this)">
           <button class="btn sm" id="saveUniverseDefaultsBtn">Save all changes</button>
         </div>
       </div>
@@ -1110,10 +1183,13 @@ table.risk-table select.score-select{
       <div class="panel-head">
         <div>
           <h2>Group Family ↔ Risk Universe Mapping</h2>
-          <div class="sub">Define which Risk Universe categories belong to each Group Family. This drives the hierarchical view on the Risk Landscape tab — clicking a Group Family bubble shows its universe subcategories. Fully editable: drag codes between families or use the dropdowns. Changes save to Firebase encrypted like all other admin data.</div>
+          <div class="sub">Define which Risk Universe categories belong to each Group Family. This drives the hierarchical view on the Risk Landscape tab — clicking a Group Family bubble shows its universe subcategories. Fully editable: drag codes between families or use the dropdowns. Changes save to Firebase encrypted like all other admin data. You can also drop your full multi-tab ERM workbook here — it automatically picks the "Mapping to Group Risk" sheet.</div>
         </div>
         <div style="display:flex; gap:8px;">
           <button class="btn ghost sm" id="resetGroupUniverseMapBtn">Reset to defaults</button>
+          <button class="btn ghost sm" onclick="downloadGumTemplate()">⬇ Download template</button>
+          <button class="btn ghost sm" onclick="document.getElementById('gumExcelInput').click()">📂 Upload mapping Excel</button>
+          <input type="file" id="gumExcelInput" accept=".xlsx,.xls" style="display:none;" onchange="handleGumExcelUpload(this)">
           <button class="btn sm" id="saveGroupUniverseMapBtn">Save mapping</button>
         </div>
       </div>
@@ -1142,7 +1218,7 @@ table.risk-table select.score-select{
           <tr><td><b>Status</b></td><td>Optional — defaults to "Ongoing" if blank, managed above.</td></tr>
           <tr><td><b>Likelihood / Impact / Control</b></td><td>Optional, default to 2 — accepts a number 1–4 or label text (e.g. "Rare", "High", "Defined").</td></tr>
         </table>
-        <div class="import-format-note">Column headers are flexible and can appear in any order. Tip: the Risk Register's CSV export uses these exact column names — edit it in Excel and re-import to round-trip safely.</div>
+        <div class="import-format-note">Column headers are flexible and can appear in any order. Tip: the Risk Register's CSV export uses these exact column names — edit it in Excel and re-import to round-trip safely. You can also drop your full multi-tab ERM workbook here — it automatically finds the "Risk Register" sheet.</div>
       </details>
 
       <div class="import-zone" id="importZone">
@@ -1169,6 +1245,52 @@ table.risk-table select.score-select{
       </div>
       <div id="importResultMsg"></div>
     </div>
+
+    <!-- GLT / FA Data Upload — admin only -->
+    <div class="admin-card" style="margin-top:18px; border-left:4px solid #6C3483;">
+      <div class="admin-card-title">📊 GLT & FA Risk Data — Upload</div>
+      <div class="admin-card-sub">Upload the Group Leadership Team / Functional Area consolidated risk Excel file. Data is stored in this browser and used in the GLT & FA tab and home dashboard cards. Expected columns: <b>FA label · GLT label · Consolidated Likelihood · Likelihood · Consolidated Impact · Impact · Consolidated Score</b>. You can also drop your full multi-tab ERM workbook here — it automatically picks the "Consolidated GLT + FA" sheet and ignores the rest.</div>
+      <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button class="btn ghost sm" onclick="downloadGltFaTemplate()" style="border-color:#6C3483;color:#6C3483;">⬇ Download template</button>
+        <button class="btn sm" onclick="document.getElementById('gltFaExcelInput').click()" style="background:#6C3483; border-color:#6C3483;">📂 Upload GLT/FA Excel</button>
+        <input type="file" id="gltFaExcelInput" accept=".xlsx,.xls" style="display:none;" onchange="handleGltFaExcelUpload(this)">
+        <button class="btn ghost sm" onclick="exportGltFaCsv()">Export current data</button>
+        <button class="btn danger sm" onclick="if(confirm('Clear all GLT/FA data?')){localStorage.removeItem('erm_glt_fa_data'); renderGltFaTab(); refreshDashboard(); alert('Cleared.');}">Clear data</button>
+      </div>
+      <div id="gltFaUploadStatus" style="margin-top:8px; font-size:12px; font-weight:700; color:#27AE60;"></div>
+      <div id="gltFaAdminPreview" style="margin-top:10px; font-size:12px; color:var(--ink-soft);"></div>
+    </div>
+
+    <!-- Workshop Contributors Data — admin only -->
+    <div class="admin-card" style="margin-top:18px; border-left:4px solid #1B4F72;">
+      <div class="admin-card-title">👥 Workshop Contributors — BU & GLT/FA Sessions</div>
+      <div class="admin-card-sub">Record of workshop sessions per Business Unit with Sales, EBITc, date, and number of participants. Used in the Contributors KPI tile on the home dashboard.</div>
+      <div style="margin-top:12px; overflow-x:auto;">
+        <table class="risk-table" id="contributorsTable" style="min-width:700px;">
+          <thead><tr>
+            <th>BU / Team</th>
+            <th>Sales</th>
+            <th>EBITc</th>
+            <th>Workshop Date</th>
+            <th style="text-align:center;">Participants</th>
+            <th style="text-align:center;">Actions</th>
+          </tr></thead>
+          <tbody id="contributorsTbody"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <button class="btn ghost sm" id="addContributorRowBtn">+ Add row</button>
+        <button class="btn sm" id="saveContributorsBtn" style="background:#1B4F72; border-color:#1B4F72;">Save contributors</button>
+        <button class="btn ghost sm" id="exportContributorsBtn">Export CSV</button>
+        <span id="contributorsSaveStatus" style="font-size:12px; color:#27AE60; font-weight:700;"></span>
+      </div>
+      <div style="margin-top:10px; padding:10px; background:#EBF5FB; border-radius:6px; font-size:11px; color:var(--ink-soft);">
+        <b>Total:</b> <span id="contributorsTotal">0</span> participants across all BUs · 
+        <span id="contributorsBUCount">0</span> BU sessions · 
+        <span id="contributorsGLTCount">0</span> GLT/FA sessions
+      </div>
+    </div>
+
   </section>
 
   <!-- ===== TAB: MANUAL SCORING & IMPORT ===== -->
@@ -1181,8 +1303,7 @@ table.risk-table select.score-select{
         </div>
         <div style="display:flex; gap:8px;">
           <button class="btn ghost sm" id="addRiskBtn">+ Add new risk</button>
-          <button class="btn danger sm" id="cleanOrphansBtn" title="Remove entries with no title or no universe code (from bad consolidations)">🧹 Clean orphan entries</button>
-          <button class="btn danger sm" id="resetRisksBtn">Reset to original 20</button>
+          <button class="btn ghost sm" id="cleanOrphansBtn" title="Remove entries with no title or no universe code (from bad consolidations)">🧹 Clean orphan entries</button>
         </div>
       </div>
       <div class="toolbar">
@@ -3894,7 +4015,177 @@ const SEED_RISKS = [
    (A1–J1, 36 entries). Risks created before this list existed still resolve
    correctly because computeAggregates() falls back to their stored label
    if a code isn't found here. */
-const SEED_UNIVERSE = [{"code": "A1", "label": "Macroeconomic and geopolitical instability"}, {"code": "A2", "label": "Unexpected or insufficiently anticipated changes in laws and regulations"}, {"code": "B1", "label": "Corruption"}, {"code": "B2", "label": "Anti-competitive practices"}, {"code": "B3", "label": "Coercive practices"}, {"code": "B4", "label": "Fraud"}, {"code": "B5", "label": "Anti-trust violations"}, {"code": "B6", "label": "Modern slavery and human rights violations"}, {"code": "C1", "label": "Climate change"}, {"code": "C2", "label": "Biodiversity loss"}, {"code": "C3", "label": "Pollution and carbon impacts"}, {"code": "C4", "label": "Health risks"}, {"code": "C5", "label": "Safety risks"}, {"code": "C6", "label": "Security risks"}, {"code": "C7", "label": "Cybersecurity attacks and system compromise"}, {"code": "C8", "label": "Information and confidential data protection"}, {"code": "C9", "label": "Personal data protection and privacy"}, {"code": "C10", "label": "Business continuity and operational resilience"}, {"code": "D1", "label": "Project and contract management"}, {"code": "D2", "label": "Technical excellence and technical delivery"}, {"code": "D3", "label": "Production model, unproductive hours, and best-shoring"}, {"code": "D4", "label": "Third-party management: partners, subcontractors, suppliers, and freelancers"}, {"code": "D5", "label": "Foreign exchange volatility"}, {"code": "D6", "label": "Tax exposure and adverse tax changes"}, {"code": "D7", "label": "Cash generation, debt, and access to capital constraints"}, {"code": "E1", "label": "Key resources, critical competencies, and workforce adequacy"}, {"code": "E2", "label": "Cultural alignment and employee engagement"}, {"code": "E3", "label": "Diversity, equity, and inclusion"}, {"code": "F1", "label": "Business portfolio balance across sectors, clients, and markets"}, {"code": "F2", "label": "Market trends and new service opportunities"}, {"code": "F3", "label": "Acquisition performance, ROI, and integration impacts"}, {"code": "G1", "label": "Competitor moves, market shifts, and changing customer behavior"}, {"code": "G2", "label": "Bid effectiveness and strategic partnerships versus MTP objectives"}, {"code": "I1", "label": "Governance, organization, internal tooling, automation, and process application"}, {"code": "I2", "label": "Business model disruption or unsustainability"}, {"code": "J1", "label": "Purchasing model and supply chain resilience, including direct and indirect procurement"}];
+
+const GLT_FA_DATA = [
+  {faLabel:"Natural disaster; climatique events; pandemic disease", gltLabel:"Natural disaster; pandemic disease", consolL:2.1, consolLText:"Rare", consolI:2.37, consolIText:"Medium", consolScore:4.98},
+  {faLabel:"Significant changes in competition landscape", gltLabel:"Significant changes in competition landscape", consolL:2.49, consolLText:"Rare", consolI:2.06, consolIText:"Medium", consolScore:5.13},
+  {faLabel:"Non-compliance with the laws and regulations", gltLabel:"Non-compliance with the laws and regulations", consolL:2.25, consolLText:"Rare", consolI:2.5, consolIText:"High", consolScore:5.63},
+  {faLabel:"Company culture", gltLabel:"Company culture", consolL:2.16, consolLText:"Rare", consolI:1.78, consolIText:"Medium", consolScore:3.84},
+  {faLabel:"Digital disruption; readiness for / of IA", gltLabel:"Digital disruption; readiness for / of IA", consolL:2.72, consolLText:"Possible", consolI:2.31, consolIText:"Medium", consolScore:6.28},
+  {faLabel:"Anticompetition (cartel, forbidden favoritism)", gltLabel:"Anticompetition (anti-trust, illegal competition)", consolL:2.05, consolLText:"Rare", consolI:2.72, consolIText:"High", consolScore:5.58},
+  {faLabel:"Harassments.", gltLabel:"Increasing number of harassments.", consolL:2.12, consolLText:"Rare", consolI:2.02, consolIText:"Medium", consolScore:4.28},
+  {faLabel:"Discrimination; weak diversity, equity and inclusion", gltLabel:"Discrimination; weak diversity, equity and inclusion", consolL:2.16, consolLText:"Rare", consolI:2.11, consolIText:"Medium", consolScore:4.56},
+  {faLabel:"Non respect of human rights; slavery", gltLabel:"Non respect of human rights; slavery", consolL:1.24, consolLText:"Unlikely", consolI:2.43, consolIText:"Medium", consolScore:3.01},
+  {faLabel:"Non-alignment of our third parties (business partners) to our commitments", gltLabel:"Inadequate consideration and management of third parties (stakeholders); business partners", consolL:1.99, consolLText:"Rare", consolI:2.45, consolIText:"Medium", consolScore:4.88},
+  {faLabel:"Active actor of carbon and pollution generation", gltLabel:"Active actor of carbon and pollution generation", consolL:2.11, consolLText:"Rare", consolI:1.99, consolIText:"Medium", consolScore:4.20},
+  {faLabel:"Impact on biodiversity", gltLabel:"Impact on biodiversity", consolL:2.20, consolLText:"Rare", consolI:1.88, consolIText:"Medium", consolScore:4.14},
+  {faLabel:"Business model disruption", gltLabel:"Business model disruption", consolL:1.78, consolLText:"Rare", consolI:3.06, consolIText:"High", consolScore:5.45},
+];
+
+const SEED_UNIVERSE = [
+  {
+    "code": "A1",
+    "label": "Macroeconomic and geopolitical instability"
+  },
+  {
+    "code": "A2",
+    "label": "Unexpected or insufficiently anticipated changes in laws and regulations"
+  },
+  {
+    "code": "B1",
+    "label": "Corruption"
+  },
+  {
+    "code": "B2",
+    "label": "Anti-competitive practices"
+  },
+  {
+    "code": "B3",
+    "label": "Coercive practices"
+  },
+  {
+    "code": "B4",
+    "label": "Fraud"
+  },
+  {
+    "code": "B5",
+    "label": "Anti-trust violations"
+  },
+  {
+    "code": "B6",
+    "label": "Modern slavery"
+  },
+  {
+    "code": "C1",
+    "label": "Health risks"
+  },
+  {
+    "code": "C2",
+    "label": "Safety risks"
+  },
+  {
+    "code": "C3",
+    "label": "Security risks"
+  },
+  {
+    "code": "C4",
+    "label": "Cybersecurity attacks and system compromise"
+  },
+  {
+    "code": "C5",
+    "label": "Data protection"
+  },
+  {
+    "code": "C6",
+    "label": "Personal data protection and privacy"
+  },
+  {
+    "code": "C7",
+    "label": "Operational disruption"
+  },
+  {
+    "code": "D1",
+    "label": "Project and contract management"
+  },
+  {
+    "code": "D2",
+    "label": "Technical excellence and technical delivery"
+  },
+  {
+    "code": "D3",
+    "label": "Production model, unproductive hours, and best-shoring"
+  },
+  {
+    "code": "D4",
+    "label": "Weakness in management of third-party and stakeholders"
+  },
+  {
+    "code": "D5",
+    "label": "Foreign exchange volatility"
+  },
+  {
+    "code": "D6",
+    "label": "Tax exposure and adverse tax changes"
+  },
+  {
+    "code": "D7",
+    "label": "Cash generation, debt, and access to capital constraints"
+  },
+  {
+    "code": "E1",
+    "label": "Key resources, critical competencies, and workforce adequacy"
+  },
+  {
+    "code": "E2",
+    "label": "Cultural alignment and employee engagement"
+  },
+  {
+    "code": "E3",
+    "label": "Diversity, equity, and inclusion"
+  },
+  {
+    "code": "F1",
+    "label": "Unbalanced business portfolio balance"
+  },
+  {
+    "code": "F2",
+    "label": "Market trends and new service opportunities"
+  },
+  {
+    "code": "F3",
+    "label": "External growth"
+  },
+  {
+    "code": "F4",
+    "label": "Integration failures"
+  },
+  {
+    "code": "G1",
+    "label": "Competitor moves, market shifts, and changing customer behavior"
+  },
+  {
+    "code": "G2",
+    "label": "Bid effectiveness versus MTP objectives"
+  },
+  {
+    "code": "I1",
+    "label": "Governance, organization, internal tooling, automation, and process application"
+  },
+  {
+    "code": "I2",
+    "label": "Business model disruption"
+  },
+  {
+    "code": "J1",
+    "label": "Purchasing model and supply chain resilience, including direct and indirect procurement"
+  },
+  {
+    "code": "K1",
+    "label": "Climate change"
+  },
+  {
+    "code": "K2",
+    "label": "Impact of Biodiversity"
+  },
+  {
+    "code": "K3",
+    "label": "Pollution and waste management"
+  },
+  {
+    "code": "K4",
+    "label": "Natural disaster"
+  }
+];
 
 /* =====================================================================
    STORAGE LAYER
@@ -4618,13 +4909,58 @@ const GROUP_UNIVERSE_MAP_KEY = 'erm_group_universe_map_v1';
 
 // Default logical mapping (all 36 universe categories assigned to a family)
 const SEED_GROUP_UNIVERSE_MAP = {
-  'G1_Risk of Debarment': ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'],
-  'G2_Operational / Financial shortfall': ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7'],
-  'G3_Damaged Image': ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9'],
-  'G4_New Business standards': ['A1', 'A2', 'F1', 'F2', 'F3'],
-  'G5_Change in market rules': ['G1', 'G2'],
-  'G6_Ineffective Governance': ['I1', 'I2', 'J1'],
-  'G7_External growth and successful integration': ['C10', 'E1', 'E2', 'E3'],
+  "G1_Risk of Debarment": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6"
+  ],
+  "G2_Operational / Financial shortfall": [
+    "C7",
+    "D1",
+    "D2",
+    "D3",
+    "D4",
+    "D5",
+    "D6",
+    "D7",
+    "G2",
+    "J1"
+  ],
+  "G3_Damaged Image": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "C6",
+    "K4"
+  ],
+  "G4_New Business standards": [
+    "A1",
+    "A2",
+    "E3",
+    "F1",
+    "F2",
+    "K1",
+    "K2",
+    "K3"
+  ],
+  "G5_Change in market rules": [
+    "G1"
+  ],
+  "G6_Ineffective Governance": [
+    "E2",
+    "I1",
+    "I2"
+  ],
+  "G7_External growth and successful integration": [
+    "E1",
+    "F3",
+    "F4"
+  ]
 };
 
 const LocalGroupUniverseMapRegistry = {
@@ -4992,16 +5328,24 @@ let sortState = {key:'inherentAvg', dir:'desc'};
 let mapFilterState = {family:'', bu:'', status:''};
 
 async function refreshDashboard(){
-  CUSTOM_FIELDS = await CustomFieldRegistry.getAll();
-  await GroupUniverseMapRegistry.load();
-  AGG = await computeAggregates();
-  const responses = await Store.getAll();
-  const sessions = await SessionRegistry.getAll();
+  try {
+    CUSTOM_FIELDS = await CustomFieldRegistry.getAll();
+  } catch(e){ CUSTOM_FIELDS = []; }
+  try {
+    await GroupUniverseMapRegistry.load();
+  } catch(e){}
+  try {
+    AGG = await computeAggregates();
+  } catch(e){ AGG = []; }
+  let responses = [], sessions = [];
+  try {
+    responses = await Store.getAll();
+    sessions  = await SessionRegistry.getAll();
+  } catch(e){}
   document.getElementById('metaResponseCount').textContent = responses.length;
-  document.getElementById('metaSessionCount').textContent = sessions.length;
-  document.getElementById('metaLastUpdated').textContent = responses.length
-    ? new Date(responses[responses.length-1].submittedAt).toLocaleString()
-    : '—';
+  document.getElementById('metaSessionCount').textContent  = sessions.length;
+  document.getElementById('metaLastUpdated').textContent   = responses.length
+    ? new Date(responses[responses.length-1].submittedAt).toLocaleString() : '—';
 
   renderStatStrip(responses.length);
   renderHomeDashboard(responses, sessions);
@@ -5057,127 +5401,68 @@ function renderHomeDashboard(responses, sessions){
 
   const pctOf = (n) => total>0 ? Math.round(n/total*100)+'%' : '0%';
 
-  // ── 8 tiles — 4×2 ────────────────────────────────────────────────
-  const tiles = [
-    // ROW 1
-    {
-      num: total,
-      lbl: 'Total Risks',
-      sub: `Across ${nBUs} business unit${nBUs!==1?'s':''}`,
-      detail: `Avg inherent ${avgInherent}/16`,
-      icon: '📋',
-      bg: 'linear-gradient(135deg,#102A43 0%,#1F4068 100%)',
-      bar: null,
-      tooltip: 'Total BU-specific risk entries across all business units'
-    },
-    {
-      num: nBUs,
-      lbl: 'Business Units',
-      sub: `${doneSess} session${doneSess!==1?'s':''} consolidated`,
-      detail: `${openSess} open · ${sessions.length} total sessions`,
-      icon: '🏢',
-      bg: 'linear-gradient(135deg,#2C5282 0%,#1A365D 100%)',
-      bar: sessions.length>0 ? {val:doneSess,max:sessions.length,color:'#80DFFF'} : null,
-      tooltip: 'Number of BUs with risk register entries and session progress'
-    },
-    {
-      num: critical,
-      lbl: 'Critical Risks',
-      sub: `Score ≥ 12/16 · ${pctOf(critical)} of register`,
-      detail: `${high} more rated High (9–11)`,
-      icon: '🔴',
-      bg: 'linear-gradient(135deg,#C0392B 0%,#922B21 100%)',
-      bar: {val:critical,max:total||1,color:'#FF8080'},
-      tooltip: 'Risks with Likelihood × Impact ≥ 12 — require immediate attention'
-    },
-    {
-      num: priority,
-      lbl: 'Priority to Act',
-      sub: `High inherent + weak controls`,
-      detail: `${pctOf(priority)} of register · act now`,
-      icon: '⚠️',
-      bg: 'linear-gradient(135deg,#D35400 0%,#A04000 100%)',
-      bar: {val:priority,max:total||1,color:'#FFB347'},
-      tooltip: 'Risks ≥9 inherent AND control below Managed — most urgent to address'
-    },
-    // ROW 2
-    {
-      num: wellCtrl,
-      lbl: 'Well Controlled',
-      sub: `Control ≥ Managed (3/4)`,
-      detail: `${pctOf(wellCtrl)} of register · avg ${avgControl}/4`,
-      icon: '✅',
-      bg: 'linear-gradient(135deg,#1E8449 0%,#145A32 100%)',
-      bar: {val:wellCtrl,max:total||1,color:'#80FF80'},
-      tooltip: 'Risks rated Managed & Monitored or Optimized for control'
-    },
-    {
-      num: `${coveragePct}%`,
-      lbl: 'Universe Coverage',
-      sub: `${coverageNum} of ${universeSize} categories scored`,
-      detail: `${universeSize-coverageNum} categories still pending`,
-      icon: '🗺️',
-      bg: 'linear-gradient(135deg,#6C3483 0%,#4A235A 100%)',
-      bar: {val:coverageNum,max:universeSize,color:'#DA8FFF'},
-      tooltip: 'Universe categories with at least one BU entry in the register'
-    },
-    {
-      num: doneSess,
-      lbl: 'Sessions Consolidated',
-      sub: `${openSess} open · ${totalSubs} responses`,
-      detail: `${sessions.length} total sessions created`,
-      icon: '🎯',
-      bg: 'linear-gradient(135deg,#117A8B 0%,#0C5460 100%)',
-      bar: sessions.length>0 ? {val:doneSess,max:sessions.length,color:'#80DFFF'} : null,
-      tooltip: 'Workshop sessions fully consolidated into the risk register'
-    },
-    {
-      num: avgInherent,
-      lbl: 'Avg Inherent Score',
-      sub: `Out of 16 (Likelihood × Impact)`,
-      detail: (() => {
-        const v = parseFloat(avgInherent);
-        if(isNaN(v)) return 'No data yet';
-        if(v>=12) return '⚠ Group level: Critical';
-        if(v>=9)  return 'Group level: High';
-        if(v>=4)  return 'Group level: Moderate';
-        return 'Group level: Low';
-      })(),
-      icon: '📊',
-      bg: (() => {
-        const v = parseFloat(avgInherent);
-        if(isNaN(v)) return 'linear-gradient(135deg,#5D6D7E 0%,#404E5C 100%)';
-        if(v>=12) return 'linear-gradient(135deg,#C0392B 0%,#922B21 100%)';
-        if(v>=9)  return 'linear-gradient(135deg,#D35400 0%,#A04000 100%)';
-        if(v>=4)  return 'linear-gradient(135deg,#B7950B 0%,#8E750A 100%)';
-        return 'linear-gradient(135deg,#1E8449 0%,#145A32 100%)';
-      })(),
-      bar: avgInherent!=='—' ? {val:parseFloat(avgInherent),max:16,color:'#FFE680'} : null,
-      tooltip: 'Average inherent risk score across all register entries'
-    },
+  // Contributors — from stored workshop data
+  const contributorsData = getContributors();
+  const nContributors = contributorsData.filter(r=>r.type==='BU').reduce((s,r)=>s+(parseInt(r.participants)||0),0);
+  const gltContribs   = contributorsData.filter(r=>r.type!=='BU').reduce((s,r)=>s+(parseInt(r.participants)||0),0);
+  const totalContribs = nContributors + gltContribs;
+
+  // GLT/FA data from localStorage or built-in
+  let gltData = [];
+  try{
+    const stored = localStorage.getItem('erm_glt_fa_data');
+    gltData = stored ? JSON.parse(stored) : (typeof GLT_FA_DATA!=='undefined' ? GLT_FA_DATA : []);
+  } catch(e){ gltData = typeof GLT_FA_DATA!=='undefined' ? GLT_FA_DATA : []; }
+
+  const gltTotal    = gltData.length;
+  const gltCritical = gltData.filter(r=>r.consolScore>=12).length;
+  const gltHigh     = gltData.filter(r=>r.consolScore>=9 && r.consolScore<12).length;
+  const gltWellCtrl = gltData.filter(r=>r.consolScore<4).length;
+  const gltAvgScore = gltTotal ? (gltData.reduce((s,r)=>s+r.consolScore,0)/gltTotal).toFixed(1) : '—';
+  const gltCoverage = gltTotal > 0 ? Math.round((gltData.filter(r=>r.consolScore>0).length/gltTotal)*100) : 0;
+  const gltScoredCount = gltData.filter(r=>r.consolScore>0).length;
+
+  // ── Row 1: BU Level (5 tiles) — SYSTRA navy/teal palette ──────────
+  // ── Row 1: BU Level — SYSTRA major colours ─────────────────────────
+  const row1 = [
+    { num: total,           lbl: 'Total Risks',       sub: 'Across '+nBUs+' BU'+(nBUs!==1?'s':''),                 detail: 'Avg inherent '+avgInherent+'/16',                icon: '📋', bg: 'linear-gradient(135deg,#003E4A,#005566)', bar: null },
+    { num: nBUs,            lbl: 'Business Units',    sub: doneSess+' consolidated · '+openSess+' open',           detail: sessions.length+' total sessions',               icon: '🏢', bg: 'linear-gradient(135deg,#5C7683,#7A95A3)', bar: sessions.length>0?{val:doneSess,max:sessions.length,color:'#D6EAF0'}:null },
+    { num: wellCtrl,        lbl: 'Well Controlled',   sub: 'Control ≥ Managed (3/4)',                              detail: pctOf(wellCtrl)+' · avg control '+avgControl+'/4', icon: '✅', bg: 'linear-gradient(135deg,#647D6E,#859E8F)', bar: {val:wellCtrl,max:total||1,color:'#D5E8DE'} },
+    { num: nContributors,   lbl: 'Contributors',      sub: 'BU workshop participants',                             detail: contributorsData.filter(r=>r.type==='BU'&&r.participants>0).length+' BU sessions', icon: '👥', bg: 'linear-gradient(135deg,#643C5A,#855478)', bar: null },
+    { num: coveragePct+'%', lbl: 'Universe Coverage', sub: coverageNum+' of '+universeSize+' categories scored',  detail: (universeSize-coverageNum)+' categories pending', icon: '🗺️', bg: 'linear-gradient(135deg,#2EB2B2,#3ECECE)', bar: {val:coverageNum,max:universeSize,color:'#D0F4F4'} },
+  ];
+
+  // ── Row 2: GLT & FA — SYSTRA red + minor accent palette ────────────
+  const row2 = [
+    { num: gltTotal,        lbl: 'Total Risks',       sub: 'GLT consolidated risk themes',                         detail: gltCritical+' critical · '+gltHigh+' high',       icon: '📋', bg: 'linear-gradient(135deg,#D22328,#E8444A)', bar: null },
+    { num: gltAvgScore,     lbl: 'Avg Score',         sub: 'Average consolidated L×I score',                      detail: 'Out of 16 · '+gltCritical+' themes critical',     icon: '📊', bg: 'linear-gradient(135deg,#EF8029,#F59A4A)', bar: gltTotal?{val:parseFloat(gltAvgScore)||0,max:16,color:'#FDE6CC'}:null },
+    { num: gltWellCtrl,     lbl: 'Well Controlled',   sub: 'Themes in Low zone (score < 4)',                       detail: 'Avg GLT score: '+gltAvgScore+'/16',               icon: '✅', bg: 'linear-gradient(135deg,#559BB4,#70B3CA)', bar: {val:gltWellCtrl,max:gltTotal||1,color:'#D0EBF4'} },
+    { num: gltContribs,     lbl: 'Contributors',      sub: 'GLT & FA workshop participants',                      detail: contributorsData.filter(r=>r.type!=='BU').length+' GLT/FA sessions held', icon: '👥', bg: 'linear-gradient(135deg,#6C3F98,#8A55B8)', bar: null },
+    { num: gltCoverage+'%', lbl: 'Universe Coverage', sub: gltScoredCount+' of '+gltTotal+' themes scored',       detail: (gltCritical+gltHigh)+' themes need attention',    icon: '🗺️', bg: 'linear-gradient(135deg,#CA3171,#E04A88)', bar: {val:gltScoredCount,max:gltTotal||1,color:'#F7C4DC'} },
   ];
 
   const kpiGrid = document.getElementById('homeKpiGrid');
   if(kpiGrid){
-    kpiGrid.innerHTML = tiles.map(t=>{
-      const barHtml = t.bar
-        ? `<div style="margin-top:10px;height:3px;background:rgba(255,255,255,0.2);border-radius:2px;overflow:hidden;"><div style="height:100%;width:${Math.min(Math.round(t.bar.val/t.bar.max*100),100)}%;background:${t.bar.color};border-radius:2px;"></div></div>`
+    const renderTileRow = (tiles) => tiles.map(t=>{
+      const pct = t.bar ? Math.min(Math.round(t.bar.val/t.bar.max*100),100) : 0;
+      const bar = t.bar
+        ? '<div style="margin-top:10px;height:3px;background:rgba(255,255,255,0.2);border-radius:2px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+t.bar.color+';border-radius:2px;"></div></div>'
         : '<div style="margin-top:13px;"></div>';
-      return `
-      <div class="kpi-tile" style="background:${t.bg};" title="${escapeXml(t.tooltip)}">
-        <div class="kpi-top">
-          <div class="kpi-num">${t.num}</div>
-          <div class="kpi-icon">${t.icon}</div>
-        </div>
-        <div>
-          <div class="kpi-lbl">${t.lbl}</div>
-          <div class="kpi-sub">${t.sub}</div>
-          <div style="font-size:10px;opacity:0.6;margin-top:2px;line-height:1.3;">${t.detail}</div>
-        </div>
-        ${barHtml}
-      </div>`;
+      return '<div class="kpi-tile" style="background:'+t.bg+';">'
+        +'<div class="kpi-top"><div class="kpi-num">'+t.num+'</div><div class="kpi-icon">'+t.icon+'</div></div>'
+        +'<div><div class="kpi-lbl">'+t.lbl+'</div><div class="kpi-sub">'+t.sub+'</div>'
+        +'<div style="font-size:10px;opacity:0.6;margin-top:2px;">'+t.detail+'</div></div>'
+        +bar+'</div>';
     }).join('');
+
+    kpiGrid.innerHTML =
+      '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);margin-bottom:8px;">🏢 BU Level — Risk Register</div>'
+      +'<div class="home-kpi-row">'+renderTileRow(row1)+'</div>'
+      +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);margin:18px 0 8px;">📊 GLT &amp; FA — Consolidated View</div>'
+      +'<div class="home-kpi-row">'+renderTileRow(row2)+'</div>';
   }
+
+
 
   // ── Orphan warning banner ─────────────────────────────────────────
   const isValidUCode = (code) => code && !code.toUpperCase().startsWith('R') && /^[A-Z]\d+$/i.test(code);
@@ -5194,7 +5479,7 @@ function renderHomeDashboard(responses, sessions){
   }
   if(orphanBanner){
     if(orphanEntries.length > 0){
-      orphanBanner.style.display = '';
+      orphanBanner.style.display = 'flex';
       orphanBanner.innerHTML = `
         <span>⚠ <b>${orphanEntries.length} orphan entr${orphanEntries.length===1?'y':'ies'}</b> found in the Risk Register — 
         these have no valid universe code and will not appear in heat maps or landscape correctly.</span>
@@ -5309,6 +5594,114 @@ function renderHomeDashboard(responses, sessions){
           </div>
           <div class="progress-bar-inline"><div class="progress-bar-fill" style="width:${pct}%; background:${fillColor};"></div></div>
           <span style="font-size:11px; color:var(--ink-soft); white-space:nowrap;">${pct}%</span>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  // ── Top 5 BU Risks — 5 vertical cards (filterable by BU) ───────────
+  const buFilterEl = document.getElementById('homeTop5BuFilter');
+  if(buFilterEl){
+    const prevVal = buFilterEl.value;
+    const bus = [...new Set(AGG.map(r=>r.bu).filter(Boolean))].sort();
+    const optsHtml = '<option value="">All BUs</option>' + bus.map(b=>`<option value="${escapeXml(b)}">${escapeXml(b)}</option>`).join('');
+    if(buFilterEl.innerHTML !== optsHtml) buFilterEl.innerHTML = optsHtml;
+    if([...buFilterEl.options].some(o=>o.value===prevVal)) buFilterEl.value = prevVal;
+    if(!buFilterEl._wired){
+      buFilterEl.addEventListener('change', ()=> renderTop5BU(buFilterEl.value));
+      buFilterEl._wired = true;
+    }
+  }
+  renderTop5BU(buFilterEl ? buFilterEl.value : '');
+
+  function renderTop5BU(buFilter){
+  const top5El = document.getElementById('homeTop5BU');
+  if(top5El){
+    const pool = buFilter ? AGG.filter(r=>r.bu===buFilter) : AGG;
+    const top5 = [...pool].sort((a,b)=>b.inherentAvg-a.inherentAvg).slice(0,5);
+    if(!top5.length){
+      top5El.style.display = 'block';
+      top5El.innerHTML = '<div class="sub" style="padding:16px;text-align:center;">'+(buFilter?'No consolidated risks for '+escapeXml(buFilter)+'.':'No BU risks consolidated yet.')+'</div>';
+    } else {
+      top5El.style.display = 'grid';
+      // SYSTRA main brand colours (red, deep-teal, sage, plum, slate-blue, teal) — one per card
+      const SYSTRA_SIX = ['#D22328','#003E4A','#647D6E','#643C5A','#5C7683','#2EB2B2'];
+      const zl = s => s>=12?'Critical':s>=9?'High':s>=4?'Moderate':'Low';
+      top5El.innerHTML = top5.map((r,i)=>{
+        const score = r.inherentAvg.toFixed(1);
+        const color = SYSTRA_SIX[i % SYSTRA_SIX.length];
+        const pct   = Math.round((r.inherentAvg/16)*100);
+        const ctrl  = r.controlAvg.toFixed(1);
+        const ctrlC = r.controlAvg>=3?'#27AE60':r.controlAvg>=2?'#E67E22':'#E74C3C';
+        const uCode = (r.riskUniverse||'').split('_')[0];
+        const medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+        return `
+        <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;background:var(--paper);">
+          <!-- Coloured header -->
+          <div style="background:${color};padding:12px 14px;color:#fff;">
+            <div style="font-size:20px;margin-bottom:4px;">${medals[i]}</div>
+            <div style="font-size:22px;font-weight:800;font-family:var(--font-mono);line-height:1;">${score}<span style="font-size:11px;opacity:0.8;font-weight:400;">/16</span></div>
+            <div style="font-size:10px;opacity:0.85;margin-top:2px;">${zl(r.inherentAvg)} inherent risk</div>
+          </div>
+          <!-- Body -->
+          <div style="padding:10px 14px;flex:1;display:flex;flex-direction:column;gap:6px;">
+            <div style="font-weight:700;font-size:12px;line-height:1.4;color:var(--navy);">${escapeXml(r.title||r.id)}</div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:2px;">
+              <span style="font-size:10px;padding:1px 6px;background:#EBF4FF;color:#2C5282;border-radius:8px;font-weight:600;">${escapeXml(r.bu||'—')}</span>
+              ${uCode?`<span style="font-size:10px;padding:1px 6px;background:var(--line);color:var(--ink-soft);border-radius:8px;">${escapeXml(uCode)}</span>`:''}
+            </div>
+            <!-- Score bar -->
+            <div style="height:4px;background:#E2E8F0;border-radius:2px;margin-top:4px;">
+              <div style="height:100%;width:${pct}%;background:${color};border-radius:2px;"></div>
+            </div>
+            <div style="font-size:10px;color:${ctrlC};font-weight:600;margin-top:2px;">Control: ${ctrl}/4</div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+  }
+
+  // ── GLT & FA Top 5 — 5 vertical cards ──────────────────────────────
+  const gltEl = document.getElementById('homeGltFaTop');
+  if(gltEl){
+    // Use localStorage-stored GLT data if available (from Excel upload), else built-in
+    let gltData = [];
+    try{
+      const stored = localStorage.getItem('erm_glt_fa_data');
+      gltData = stored ? JSON.parse(stored) : (typeof GLT_FA_DATA!=='undefined' ? GLT_FA_DATA : []);
+    } catch(e){ gltData = typeof GLT_FA_DATA!=='undefined' ? GLT_FA_DATA : []; }
+
+    if(!gltData.length){
+      gltEl.style.display = 'block';
+      gltEl.innerHTML = '<div class="sub" style="padding:16px;text-align:center;">No GLT/FA data yet. Upload an Excel file in the GLT/FA tab.</div>';
+    } else {
+      gltEl.style.display = 'grid';
+      const sorted = [...gltData].sort((a,b)=>b.consolScore-a.consolScore).slice(0,5);
+      // SYSTRA main brand colours (red, deep-teal, sage, plum, slate-blue, teal) — one per card
+      const SYSTRA_SIX = ['#D22328','#003E4A','#647D6E','#643C5A','#5C7683','#2EB2B2'];
+      const zl = s => s>=12?'Critical':s>=9?'High':s>=4?'Medium':'Low';
+      const medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+      gltEl.innerHTML = sorted.map((row,i)=>{
+        const pct   = Math.round((row.consolScore/16)*100);
+        const color = SYSTRA_SIX[i % SYSTRA_SIX.length];
+        const shortLabel = row.gltLabel.length>40 ? row.gltLabel.slice(0,38)+'…' : row.gltLabel;
+        return `
+        <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;background:var(--paper);">
+          <!-- Coloured header -->
+          <div style="background:${color};padding:12px 14px;color:#fff;">
+            <div style="font-size:20px;margin-bottom:4px;">${medals[i]}</div>
+            <div style="font-size:22px;font-weight:800;font-family:var(--font-mono);line-height:1;">${row.consolScore.toFixed(2)}<span style="font-size:11px;opacity:0.8;font-weight:400;">/16</span></div>
+            <div style="font-size:10px;opacity:0.85;margin-top:2px;">${zl(row.consolScore)} · L:${row.consolLText} I:${row.consolIText}</div>
+          </div>
+          <!-- Body -->
+          <div style="padding:10px 14px;flex:1;display:flex;flex-direction:column;gap:5px;">
+            <div style="font-weight:700;font-size:12px;line-height:1.4;color:var(--navy);" title="${escapeXml(row.gltLabel)}">${escapeXml(shortLabel)}</div>
+            <div style="font-size:10px;color:var(--ink-soft);line-height:1.3;">${escapeXml(row.faLabel||'')}</div>
+            <div style="height:4px;background:#E2E8F0;border-radius:2px;margin-top:4px;">
+              <div style="height:100%;width:${pct}%;background:${color};border-radius:2px;"></div>
+            </div>
+          </div>
         </div>`;
       }).join('');
     }
@@ -5984,9 +6377,10 @@ let landscapeMode = 'family'; // 'family' | 'universe'
 let selectedBubbleKey = null;
 
 const BUBBLE_PALETTE = [
-  '#102A43','#643C5A','#003E4A','#559BB4','#27AE60',
-  '#E67E22','#2EB2B2','#6C3F98','#D22328','#647D6E',
-  '#486581','#C98A2C','#5C7683','#1E8B4C','#A3181C'
+  '#D22328','#003E4A','#2EB2B2','#643C5A','#559BB4',
+  '#647D6E','#5C7683','#6C3F98','#EF8029','#CA3171',
+  '#73B140','#5298D0','#25B9EA','#3A3678','#F8B61D',
+  '#855182','#A01C3D','#80C8BE','#87A067','#5E3C1C'
 ];
 
 async function renderLandscapeChart(){
@@ -6282,6 +6676,188 @@ document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ setTimeout(renderLandscapeChart, 50); });
   }
 });
+
+// ── Pick the right sheet by name out of a multi-tab workbook ──────────
+// Lets the SAME multi-sheet ERM workbook (e.g. "Consolidated GLT + FA",
+// "Risk Universe Defaults", "Mapping to Group Risk", "Risk Register")
+// be dropped into any of the individual importers — each one grabs its
+// own tab by name and ignores the others, instead of always reading
+// sheet 0.
+function pickSheet(wb, namePatterns){
+  const match = wb.SheetNames.find(n => namePatterns.test(n));
+  return wb.Sheets[match || wb.SheetNames[0]];
+}
+
+function handleGltFaExcelUpload(input){
+  const file = input.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('gltFaUploadStatus');
+  if(statusEl) statusEl.textContent = 'Reading…';
+
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    try{
+      // XLSX is loaded globally via CDN script tag
+      if(typeof XLSX === 'undefined'){ alert('SheetJS library not loaded. Please check your connection.'); return; }
+
+      const wb   = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+      const ws   = pickSheet(wb, /glt|consolidat/i);
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
+
+      if(!rows.length){ alert('No data found in the first sheet.'); return; }
+
+      // Flexible column finder — match by partial lowercase
+      const findCol = (sample, ...candidates) => {
+        const keys = Object.keys(sample);
+        for(const cand of candidates){
+          const m = keys.find(k=>k.toLowerCase().replace(/[^a-z0-9]/g,'').includes(cand.toLowerCase().replace(/[^a-z0-9]/g,'')));
+          if(m) return m;
+        }
+        return null;
+      };
+
+      const s = rows[0];
+      const faCol    = findCol(s,'falabel','fa label','fa');
+      const gltCol   = findCol(s,'gltlabel','glt label','glt');
+      const uCodeCol = findCol(s,'risk_universe_code','universecode','riskcode','code');
+      const uTitleCol= findCol(s,'risk_universe_title','universetitle','risktitle','universe title');
+      const gfCol    = findCol(s,'group_family','groupfamily','family');
+      const lCol     = findCol(s,'consolidatedlikelihood','consollidatedl','consolidatedl','consol');
+      const lTxtCol  = findCol(s,'likelihood','llevel');
+      const iCol     = findCol(s,'consolidatedimpact','consolidatedi','consollidatedi');
+      const iTxtCol  = findCol(s,'impact','ilevel');
+      const scoreCol = findCol(s,'consolidatedscore','score','consolscore');
+
+      const parsed = rows.map(row=>{
+        const faLabel          = String(row[faCol]||'').trim();
+        const gltLabel         = String(row[gltCol]||'').trim();
+        const riskUniverseCode = uCodeCol ? String(row[uCodeCol]||'').trim() : '';
+        const riskUniverseTitle= uTitleCol ? String(row[uTitleCol]||'').trim() : '';
+        const groupFamily      = gfCol ? String(row[gfCol]||'').trim() : '';
+        const consolL          = parseFloat(String(row[lCol]||'0').replace(',','.')) || 0;
+        const consolI          = parseFloat(String(row[iCol]||'0').replace(',','.')) || 0;
+        const consolScore      = parseFloat(String(row[scoreCol]||'0').replace(',','.')) || parseFloat((consolL*consolI).toFixed(2));
+        const consolLText      = lTxtCol ? String(row[lTxtCol]||'').trim() : (consolL<1.5?'Unlikely':consolL<2.5?'Rare':consolL<3.5?'Possible':'Frequent');
+        const consolIText      = iTxtCol ? String(row[iTxtCol]||'').trim() : (consolI<1.5?'Low':consolI<2.5?'Medium':consolI<3.5?'High':'Critical');
+        return {faLabel, gltLabel, riskUniverseCode, riskUniverseTitle, groupFamily, consolL, consolLText, consolI, consolIText, consolScore};
+      }).filter(r=>(r.gltLabel||r.faLabel||r.riskUniverseCode) && r.consolScore > 0);
+
+      if(!parsed.length){
+        alert(`Could not parse valid rows.\n\nHeaders found: ${Object.keys(rows[0]).join(', ')}\n\nExpected headers containing: "FA label", "GLT label", "Consolidated Score"`);
+        if(statusEl) statusEl.textContent = '✗ Parse failed';
+        return;
+      }
+
+      localStorage.setItem('erm_glt_fa_data', JSON.stringify(parsed));
+      const statusEl = document.getElementById('gltFaUploadStatus');
+      if(statusEl) statusEl.textContent = '✓ '+parsed.length+' rows loaded from "'+file.name+'"';
+      // Show mini preview in admin
+      const previewEl = document.getElementById('gltFaAdminPreview');
+      if(previewEl){
+        const top3 = parsed.slice(0,3).map(r=>'• '+r.gltLabel+' — score: '+r.consolScore.toFixed(2)).join('<br>');
+        previewEl.innerHTML = 'Loaded '+parsed.length+' themes. Top entries:<br>'+top3+(parsed.length>3?'<br>…and '+(parsed.length-3)+' more':'');
+      }
+
+      renderGltFaTab();
+      await refreshDashboard();
+      input.value = '';
+
+    } catch(err){
+      console.error('GLT/FA upload error:', err);
+      alert('Error: ' + err.message);
+      if(statusEl) statusEl.textContent = '✗ ' + err.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderGltFaTab(){
+  const tbody = document.getElementById('gltFaTbody');
+  const heatmap = document.getElementById('gltFaHeatmap');
+  if(!tbody) return;
+
+  // Use localStorage data if available, else built-in GLT_FA_DATA
+  let data = [];
+  try{
+    const stored = localStorage.getItem('erm_glt_fa_data');
+    data = stored ? JSON.parse(stored) : (typeof GLT_FA_DATA!=='undefined' ? GLT_FA_DATA : []);
+  } catch(e){ data = typeof GLT_FA_DATA!=='undefined' ? GLT_FA_DATA : []; }
+
+  if(!data.length){
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--ink-soft);">No data yet — upload an Excel file using the button above.</td></tr>`;
+    if(heatmap) heatmap.innerHTML = '';
+    return;
+  }
+
+  const zoneColor = (score) => {
+    if(score >= 12) return {bg:'#E74C3C', text:'#fff', label:'Critical'};
+    if(score >= 9)  return {bg:'#E67E22', text:'#fff', label:'High'};
+    if(score >= 4)  return {bg:'#F1C40F', text:'#333', label:'Medium'};
+    return {bg:'#27AE60', text:'#fff', label:'Low'};
+  };
+
+  const sorted = [...data].sort((a,b)=>b.consolScore - a.consolScore);
+
+  tbody.innerHTML = sorted.map((row, i)=>{
+    const z = zoneColor(row.consolScore);
+    return `<tr>
+      <td style="font-family:var(--font-mono);color:var(--ink-soft);font-size:11px;">${i+1}</td>
+      <td style="text-align:center;"><span style="font-family:var(--font-mono);font-weight:700;font-size:11px;padding:2px 6px;background:#EBF5FB;color:#1B4F72;border-radius:6px;">${escapeXml(row.riskUniverseCode||'—')}</span></td>
+      <td style="font-size:12px;font-weight:600;color:var(--navy);">${escapeXml(row.riskUniverseTitle||'—')}</td>
+      <td style="font-size:11px;color:var(--ink-soft);">${escapeXml(row.groupFamily||'—')}</td>
+      <td style="font-size:12px;color:var(--ink-soft);">${escapeXml(row.faLabel||'—')}</td>
+      <td style="font-size:12px;font-weight:600;">${escapeXml(row.gltLabel||'—')}</td>
+      <td style="text-align:center;font-family:var(--font-mono);font-weight:700;">${(row.consolL||0).toFixed(2)}</td>
+      <td style="text-align:center;font-size:11px;color:var(--ink-soft);">${escapeXml(row.consolLText||'')}</td>
+      <td style="text-align:center;font-family:var(--font-mono);font-weight:700;">${(row.consolI||0).toFixed(2)}</td>
+      <td style="text-align:center;font-size:11px;color:var(--ink-soft);">${escapeXml(row.consolIText||'')}</td>
+      <td style="text-align:center;">
+        <span style="font-family:var(--font-mono);font-weight:700;font-size:14px;padding:4px 10px;background:${z.bg}22;color:${z.bg};border-radius:6px;border:1px solid ${z.bg}55;">
+          ${(row.consolScore||0).toFixed(2)}
+        </span>
+      </td>
+      <td style="text-align:center;">
+        <span style="font-size:10px;font-weight:700;padding:2px 8px;background:${z.bg};color:${z.text};border-radius:10px;">${z.label}</span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Mini heatmap bar chart
+  if(heatmap){
+    heatmap.innerHTML = sorted.map(row=>{
+      const z = zoneColor(row.consolScore);
+      const pct = Math.round((row.consolScore/16)*100);
+      const shortLabel = row.gltLabel.length>30 ? row.gltLabel.slice(0,28)+'…' : row.gltLabel;
+      return `<div style="flex:0 0 auto;width:160px;" title="${escapeXml(row.gltLabel)}\nScore: ${row.consolScore.toFixed(2)}/16">
+        <div style="font-size:10px;color:var(--ink-soft);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeXml(shortLabel)}</div>
+        <div style="height:18px;background:#E9ECF0;border-radius:4px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:${z.bg};border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:4px;">
+            <span style="font-size:9px;color:${z.text};font-weight:700;">${row.consolScore.toFixed(1)}</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
+function exportGltFaCsv(){
+  let data = [];
+  try{
+    const stored = localStorage.getItem('erm_glt_fa_data');
+    data = stored ? JSON.parse(stored) : (typeof GLT_FA_DATA!=='undefined' ? GLT_FA_DATA : []);
+  } catch(e){ data = typeof GLT_FA_DATA!=='undefined' ? GLT_FA_DATA : []; }
+  if(!data.length){ alert('No GLT/FA data to export.'); return; }
+  const rows = [['#','FA Label','GLT Label','Consol L','L Level','Consol I','I Level','Consol Score','Zone']];
+  const zoneLabel = s => s>=12?'Critical':s>=9?'High':s>=4?'Medium':'Low';
+  [...data].sort((a,b)=>b.consolScore-a.consolScore).forEach((r,i)=>{
+    rows.push([i+1, r.faLabel, r.gltLabel, r.consolL, r.consolLText, r.consolI, r.consolIText, r.consolScore, zoneLabel(r.consolScore)]);
+  });
+  const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'GLT_FA_Risk_Consolidation.csv';
+  a.click();
+}
 
 async function renderGlobalRisksTable(){
   const tbody = document.querySelector('#globalRisksTable tbody');
@@ -7542,6 +8118,123 @@ function renderSimpleListEditor(containerId, key, seed, usageCounter){
   });
 }
 
+// ── Contributors Data ────────────────────────────────────────────────
+const CONTRIBUTORS_KEY = 'erm_contributors_v1';
+const SEED_CONTRIBUTORS = [
+  {bu:'KSA',  sales:'85,290.46 €',  ebitc:'13,657.62 €', date:'1/24/2023',  participants:6,  type:'BU'},
+  {bu:'CAN',  sales:'49,752.20 €',  ebitc:'5,259.46 €',  date:'4/4/2023',   participants:8,  type:'BU'},
+  {bu:'IND',  sales:'47,586.22 €',  ebitc:'8,408.07 €',  date:'10/11/2023', participants:18, type:'BU'},
+  {bu:'EGY',  sales:'31,973.47 €',  ebitc:'5,056.95 €',  date:'5/20/2024',  participants:8,  type:'BU'},
+  {bu:'BRA',  sales:'33,055.67 €',  ebitc:'3,834.28 €',  date:'6/18/2024',  participants:10, type:'BU'},
+  {bu:'DBI',  sales:'128,099.91 €', ebitc:'15,623.15 €', date:'7/1/2024',   participants:14, type:'BU'},
+  {bu:'UKI',  sales:'271,919.77 €', ebitc:'59,554.02 €', date:'10/10/2024', participants:5,  type:'BU'},
+  {bu:'ANZ',  sales:'103,041.57 €', ebitc:'14,957.69 €', date:'10/22/2024', participants:20, type:'BU'},
+  {bu:'ASIA', sales:'43,149.30 €',  ebitc:'4,987.61 €',  date:'10/29/2024', participants:17, type:'BU'},
+  {bu:'USA',  sales:'53,590.57 €',  ebitc:'5,175.70 €',  date:'10/6/2024',  participants:11, type:'BU'},
+  {bu:'DNK',  sales:'52,635.60 €',  ebitc:'4,224.82 €',  date:'3/4/2025',   participants:7,  type:'BU'},
+  {bu:'ITA',  sales:'53,086.01 €',  ebitc:'6,716.07 €',  date:'5/6/2025',   participants:16, type:'BU'},
+  {bu:'FRA',  sales:'260,435.90 €', ebitc:'25,097.80 €', date:'11/24/2025', participants:19, type:'BU'},
+  {bu:'SWE',  sales:'76,613.08 €',  ebitc:'4,885.29 €',  date:'TBC',        participants:0,  type:'BU'},
+  {bu:'GLT',  sales:'',             ebitc:'',             date:'12/3/2024',  participants:12, type:'GLT'},
+  {bu:'F&A',  sales:'',             ebitc:'',             date:'11/18/2024', participants:32, type:'FA'},
+];
+
+function getContributors(){
+  try{
+    const stored = localStorage.getItem(CONTRIBUTORS_KEY);
+    return stored ? JSON.parse(stored) : SEED_CONTRIBUTORS;
+  } catch(e){ return SEED_CONTRIBUTORS; }
+}
+
+function saveContributorsData(data){
+  localStorage.setItem(CONTRIBUTORS_KEY, JSON.stringify(data));
+}
+
+function getTotalParticipants(){
+  const data = getContributors();
+  return data.reduce((s,r)=>s+(parseInt(r.participants)||0), 0);
+}
+
+function renderContributorsTable(){
+  const tbody = document.getElementById('contributorsTbody');
+  if(!tbody) return;
+  const data = getContributors();
+
+  tbody.innerHTML = data.map((row,i)=>{
+    const typeBadge = row.type==='GLT'
+      ? '<span style="font-size:9px;padding:1px 6px;background:#6C3483;color:#fff;border-radius:8px;">GLT</span>'
+      : row.type==='FA'
+      ? '<span style="font-size:9px;padding:1px 6px;background:#922B21;color:#fff;border-radius:8px;">FA</span>'
+      : '<span style="font-size:9px;padding:1px 6px;background:#1B4F72;color:#fff;border-radius:8px;">BU</span>';
+    return `<tr>
+      <td><b>${escapeXml(row.bu)}</b> ${typeBadge}</td>
+      <td><input type="text" value="${escapeXml(row.sales||'')}" data-idx="${i}" data-field="sales"
+        style="width:120px;font-size:12px;border:1px solid var(--line);border-radius:4px;padding:3px 6px;"></td>
+      <td><input type="text" value="${escapeXml(row.ebitc||'')}" data-idx="${i}" data-field="ebitc"
+        style="width:120px;font-size:12px;border:1px solid var(--line);border-radius:4px;padding:3px 6px;"></td>
+      <td><input type="text" value="${escapeXml(row.date||'')}" data-idx="${i}" data-field="date"
+        style="width:100px;font-size:12px;border:1px solid var(--line);border-radius:4px;padding:3px 6px;"></td>
+      <td style="text-align:center;"><input type="number" value="${row.participants||0}" min="0" data-idx="${i}" data-field="participants"
+        style="width:60px;text-align:center;font-size:12px;border:1px solid var(--line);border-radius:4px;padding:3px 6px;"></td>
+      <td style="text-align:center;">
+        <button class="icon-btn danger" onclick="deleteContributorRow(${i})">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Update totals
+  const total     = data.reduce((s,r)=>s+(parseInt(r.participants)||0),0);
+  const buCount   = data.filter(r=>r.type==='BU').reduce((s,r)=>s+(parseInt(r.participants)||0),0);
+  const gltCount  = data.filter(r=>r.type!=='BU').reduce((s,r)=>s+(parseInt(r.participants)||0),0);
+  const totEl = document.getElementById('contributorsTotal');
+  const buEl  = document.getElementById('contributorsBUCount');
+  const gltEl = document.getElementById('contributorsGLTCount');
+  if(totEl) totEl.textContent = total;
+  if(buEl)  buEl.textContent  = buCount+' participants';
+  if(gltEl) gltEl.textContent = gltCount+' participants';
+}
+
+window.deleteContributorRow = (idx)=>{
+  const data = getContributors();
+  data.splice(idx,1);
+  saveContributorsData(data);
+  renderContributorsTable();
+};
+
+document.getElementById('saveContributorsBtn')?.addEventListener('click', ()=>{
+  const data = getContributors();
+  // Read all input values back
+  document.querySelectorAll('#contributorsTbody input').forEach(inp=>{
+    const i = parseInt(inp.dataset.idx);
+    const field = inp.dataset.field;
+    if(data[i]) data[i][field] = field==='participants' ? parseInt(inp.value)||0 : inp.value;
+  });
+  saveContributorsData(data);
+  renderContributorsTable();
+  const st = document.getElementById('contributorsSaveStatus');
+  if(st){ st.textContent = '✓ Saved'; setTimeout(()=>st.textContent='',2000); }
+  // Refresh home dashboard to update Contributors tile
+  refreshDashboard();
+});
+
+document.getElementById('addContributorRowBtn')?.addEventListener('click', ()=>{
+  const data = getContributors();
+  data.push({bu:'NEW', sales:'', ebitc:'', date:'', participants:0, type:'BU'});
+  saveContributorsData(data);
+  renderContributorsTable();
+});
+
+document.getElementById('exportContributorsBtn')?.addEventListener('click', ()=>{
+  const data = getContributors();
+  const rows = [['BU/Team','Type','Sales','EBITc','Workshop Date','Participants']];
+  data.forEach(r=>rows.push([r.bu,r.type||'BU',r.sales||'',r.ebitc||'',r.date||'',r.participants||0]));
+  const csv = rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download = 'SYSTRA_ERM_Contributors.csv';
+  a.click();
+});
+
 async function renderAllAdminListEditors(){
   const risks = await RiskRegistry.getAll();
   renderScalesEditor();
@@ -7551,6 +8244,7 @@ async function renderAllAdminListEditors(){
   await renderCustomFieldsList();
   renderUniverseDefaultsTable();
   await renderGroupUniverseMapEditor();
+  renderContributorsTable();
 }
 
 /* =====================================================================
@@ -7790,32 +8484,212 @@ async function renderGroupUniverseMapEditor(){
   }
 }
 
+// ── Template Download Functions ──────────────────────────────────────
+function downloadCsv(filename, rows){
+  const csv = rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download = filename;
+  a.click();
+}
+
+function downloadGltFaTemplate(){
+  downloadCsv('GLT_FA_Template.csv', [
+    ['Risk_Universe_Code','Risk_Universe_Title','Group_Family','FA label','GLT label','Consolidated Likelihood','Likelihood','Consolidated Impact','Impact','Consolidated Score'],
+    ['A1','Macroeconomic and geopolitical instability','G4_New Business standards','Significant changes in competition landscape','Significant changes in competition landscape','2.49','Rare','2.06','Medium','5.13'],
+    ['B4','Fraud','G1_Risk of Debarment','Anticompetition (cartel, forbidden favoritism)','Anticompetition (anti-trust, illegal competition)','2.05','Rare','2.72','High','5.58'],
+    ['','','','Add more rows below...','','','','','',''],
+  ]);
+}
+
+function downloadUniverseDefaultsTemplate(){
+  const rows = [['Code','Universe Category','Group','Default Title','Default Description']];
+  // Pre-fill with current UNIVERSE_DEFAULTS
+  SEED_UNIVERSE.forEach(u=>{
+    const d = UNIVERSE_DEFAULTS[u.code] || {title:'', description:''};
+    rows.push([u.code, u.label, u.code[0], d.title, d.description]);
+  });
+  downloadCsv('Universe_Defaults_Template.csv', rows);
+}
+
+function downloadGumTemplate(){
+  // Pre-fill with current SEED_GROUP_UNIVERSE_MAP
+  const rows = [['Mapping Code','Risk Universe Category','Group Family','Group Family Name']];
+  Object.entries(SEED_GROUP_UNIVERSE_MAP).forEach(([family, codes])=>{
+    const fName = family.split('_').slice(1).join('_');
+    const fCode = family.split('_')[0];
+    codes.forEach(code=>{
+      const u = SEED_UNIVERSE.find(u=>u.code===code);
+      rows.push([code, u?u.label:'', family, fName]);
+    });
+  });
+  downloadCsv('Group_Family_Mapping_Template.csv', rows);
+}
+
+// ── Universe Defaults Excel Upload ───────────────────────────────────
+function handleUniverseDefaultsUpload(input){
+  const file = input.files[0];
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){ alert('SheetJS not loaded.'); return; }
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const wb   = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+      const ws   = pickSheet(wb, /universe.*default|default.*universe/i);
+
+      // Auto-detect the real header row (skips any title row placed above it,
+      // e.g. "ERM — Risk Universe Default Titles & Descriptions")
+      const allRows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      if(!allRows.length){ alert('No data found.'); return; }
+      let headerRowIdx = 0;
+      for(let i=0; i<Math.min(10, allRows.length); i++){
+        const rowStr = allRows[i].map(c=>String(c||'').toLowerCase()).join('|');
+        if(rowStr.includes('code') && (rowStr.includes('title') || rowStr.includes('description'))){
+          headerRowIdx = i; break;
+        }
+      }
+      const headerRow = allRows[headerRowIdx].map(h=>String(h||'').trim());
+      const rows = allRows.slice(headerRowIdx+1).map(r=>{
+        const obj = {};
+        headerRow.forEach((h,i)=>{ if(h) obj[h] = r[i]!==undefined ? r[i] : ''; });
+        return obj;
+      }).filter(row => Object.values(row).some(v=>String(v).trim()!==''));
+      if(!rows.length){ alert('No data found.'); return; }
+
+      const findCol = (sample, ...cands) => {
+        const keys = Object.keys(sample);
+        for(const c of cands){
+          const m = keys.find(k=>k.toLowerCase().replace(/[^a-z]/g,'').includes(c.toLowerCase().replace(/[^a-z]/g,'')));
+          if(m) return m;
+        }
+        return null;
+      };
+      const s = rows[0];
+      const codeCol  = findCol(s,'code','riskuniversecode','universecode');
+      const titleCol = findCol(s,'title','defaulttitle');
+      const descCol  = findCol(s,'description','defaultdescription','desc');
+
+      if(!codeCol){ alert('Could not find a "Code" column. Headers found: '+Object.keys(rows[0]).join(', ')); return; }
+
+      const updated = UniverseDefaultsRegistry.getAll();
+      let count = 0;
+      rows.forEach(row=>{
+        const code = String(row[codeCol]||'').trim().toUpperCase();
+        if(!code || !/^[A-Z]{1,3}\d{1,3}$/.test(code)) return; // skip section-header rows like "A — External context..."
+        const title = titleCol ? String(row[titleCol]||'').trim() : '';
+        const description = descCol ? String(row[descCol]||'').trim() : '';
+        if(title || description){ updated[code] = {title, description}; count++; }
+      });
+      UniverseDefaultsRegistry.saveAll(updated);
+      renderUniverseDefaultsTable();
+      alert('✓ Updated '+count+' universe default entries from "'+file.name+'".');
+      input.value = '';
+    } catch(err){ alert('Error: '+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── Group Family Mapping Excel Upload ────────────────────────────────
+function handleGumExcelUpload(input){
+  const file = input.files[0];
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){ alert('SheetJS not loaded.'); return; }
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    try{
+      const wb   = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+      const ws   = pickSheet(wb, /mapping|group.*(family|risk)/i);
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
+      if(!rows.length){ alert('No data found.'); return; }
+
+      const findCol = (sample, ...cands) => {
+        const keys = Object.keys(sample);
+        for(const c of cands){
+          const m = keys.find(k=>k.toLowerCase().replace(/[^a-z]/g,'').includes(c.toLowerCase().replace(/[^a-z]/g,'')));
+          if(m) return m;
+        }
+        return null;
+      };
+      const s = rows[0];
+      const codeCol   = findCol(s,'mapping code','riskuniverse','code','universecode');
+      const familyCol = findCol(s,'group_family','groupfamily','family','group family name','groupfamilyname');
+
+      if(!codeCol || !familyCol){
+        alert('Could not find Code and Group Family columns.\nHeaders found: '+Object.keys(rows[0]).join(', '));
+        return;
+      }
+
+      // Build the new map
+      const newMap = {};
+      rows.forEach(row=>{
+        const code   = String(row[codeCol]||'').split('_')[0].trim().toUpperCase();
+        const family = String(row[familyCol]||'').trim();
+        if(!code || !family) return;
+        // Find matching family key (G1_Risk of Debarment etc)
+        const families = JSON.parse(localStorage.getItem('erm_group_families_v1')||'null') || SEED_GROUP_FAMILIES;
+        const fKey = families.find(f=>f===family || f.startsWith(family.split('_')[0]+'_') || f.toLowerCase().includes(family.toLowerCase())) || family;
+        if(!newMap[fKey]) newMap[fKey] = [];
+        if(!newMap[fKey].includes(code)) newMap[fKey].push(code);
+      });
+
+      if(!Object.keys(newMap).length){ alert('No valid mappings found in the file.'); return; }
+      await GroupUniverseMapRegistry.saveAll(newMap);
+      await renderGroupUniverseMapEditor();
+      alert('✓ Updated Group Family mapping from "'+file.name+'" — '+Object.keys(newMap).length+' families mapped.');
+      input.value = '';
+    } catch(err){ alert('Error: '+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
 async function renderUniverseDefaultsTable(){
   const tbody = document.getElementById('universeDefaultsTbody');
   if(!tbody) return;
   const universeEntries = await UniverseRegistry.getAll();
-  const sorted = universeEntries.slice().sort((a,b)=>a.code.localeCompare(b.code));
+  const sorted = universeEntries.slice().sort((a,b)=>a.code.localeCompare(b.code, undefined, {numeric:true}));
   const currentDefaults = UniverseDefaultsRegistry.getAll();
 
+  // Section headings by first letter of code
+  const SECTION_HEADINGS = {
+    'A': 'A — External context & regulatory pressure',
+    'B': 'B — Ethics & Compliance',
+    'C': 'C — Security, Health & Safety',
+    'D': 'D — Financial resilience & Delivery',
+    'E': 'E — People & Culture',
+    'F': 'F — Strategy & Growth',
+    'G': 'G — Market & Competition',
+    'I': 'I — Governance & Operations',
+    'J': 'J — Supply Chain',
+    'K': 'K — Sustainability & Natural challenges',
+  };
+
+  let lastGroup = '';
   tbody.innerHTML = sorted.map(entry=>{
-    const d = currentDefaults[entry.code] || UNIVERSE_DEFAULTS[entry.code] || {title:'', description:''};
-    return `
+    // Always fall back to built-in UNIVERSE_DEFAULTS if nothing stored
+    const d = (currentDefaults[entry.code] && (currentDefaults[entry.code].title || currentDefaults[entry.code].description))
+      ? currentDefaults[entry.code]
+      : (UNIVERSE_DEFAULTS[entry.code] || {title:'', description:''});
+
+    const group = entry.code[0].toUpperCase();
+    let heading = '';
+    if(group !== lastGroup){
+      lastGroup = group;
+      const headText = SECTION_HEADINGS[group] || group;
+      heading = `<tr><td colspan="4" style="padding:12px 8px 4px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);background:#F8F9FA;border-top:2px solid var(--line);">${escapeXml(headText)}</td></tr>`;
+    }
+    return heading + `
       <tr data-code="${escapeXml(entry.code)}">
         <td><span class="tag">${escapeXml(entry.code)}</span></td>
         <td style="font-size:12px; color:var(--ink-soft);">${escapeXml(entry.label)}</td>
         <td>
-          <input type="text"
-            class="ud-title-input"
-            value="${escapeXml(d.title)}"
+          <input type="text" class="ud-title-input" value="${escapeXml(d.title)}"
             placeholder="Enter default title…"
-            style="width:100%; padding:7px 9px; border:1.5px solid var(--line); border-radius:6px; font-size:12.5px; font-family:var(--font-body);">
+            style="width:100%;padding:7px 9px;border:1.5px solid ${d.title?'var(--line)':'#F1C40F'};border-radius:6px;font-size:12.5px;font-family:var(--font-body);">
         </td>
         <td>
-          <textarea
-            class="ud-desc-input"
-            rows="2"
+          <textarea class="ud-desc-input" rows="2"
             placeholder="Enter default description…"
-            style="width:100%; padding:7px 9px; border:1.5px solid var(--line); border-radius:6px; font-size:12px; font-family:var(--font-body); resize:vertical; line-height:1.45;"
+            style="width:100%;padding:7px 9px;border:1.5px solid ${d.description?'var(--line)':'#F1C40F'};border-radius:6px;font-size:12px;font-family:var(--font-body);resize:vertical;line-height:1.45;"
           >${escapeXml(d.description)}</textarea>
         </td>
       </tr>`;
@@ -7843,9 +8717,13 @@ document.getElementById('saveUniverseDefaultsBtn')?.addEventListener('click', ()
 });
 
 document.getElementById('resetUniverseDefaultsBtn')?.addEventListener('click', ()=>{
-  if(!confirm('Reset all default titles and descriptions back to the built-in values? Your edits will be lost.')) return;
-  UniverseDefaultsRegistry.resetToBuiltIn();
+  if(!confirm('Reset ALL universe defaults to the built-in SYSTRA titles and descriptions? This will overwrite any custom edits.')) return;
+  UniverseDefaultsRegistry.saveAll(UNIVERSE_DEFAULTS);
   renderUniverseDefaultsTable();
+  const btn = document.getElementById('resetUniverseDefaultsBtn');
+  const orig = btn.textContent;
+  btn.textContent = '✓ Reset to built-in defaults';
+  setTimeout(()=>btn.textContent=orig, 2000);
 });
 
 async function renderCustomFieldsList(){
@@ -8168,150 +9046,158 @@ function populateScoreSelect(selectEl, scaleArr, selected){
    specific context and risk appetite before finalising.
    ===================================================================== */
 const UNIVERSE_DEFAULTS = {
-  'A1': {
-    title: 'Macroeconomic and geopolitical instability',
-    description: 'Risk that adverse macroeconomic or geopolitical developments — including recession, inflation, interest rate volatility, foreign exchange pressure, political instability, elections, sanctions, armed conflict, or shifts in public investment priorities — reduce demand, delay client decisions, weaken funding availability, or disrupt operations and project delivery.'
+  "A1": {
+    "title": "Macroeconomic and geopolitical instability",
+    "description": "Risk that adverse macroeconomic or geopolitical developments \u2014 including recession, inflation, interest rate volatility, foreign exchange pressure, political instability, elections, sanctions, armed conflict, or shifts in public investment priorities \u2014 reduce demand, delay client decisions, weaken funding availability, or disrupt operations and project delivery."
   },
-  'A2': {
-    title: 'Regulatory and legislative changes',
-    description: 'Risk that unexpected or insufficiently anticipated changes in laws, regulations, standards, certifications, reporting obligations, procurement rules, tax frameworks, labour law, or sector-specific compliance requirements increase costs, create barriers to market access, generate penalties, or require significant adaptation of business practices and delivery models.'
+  "A2": {
+    "title": "Regulatory and legislative changes",
+    "description": "Risk that unexpected or insufficiently anticipated changes in laws, regulations, standards, certifications, reporting obligations, procurement rules, tax frameworks, labour law, or sector-specific compliance requirements increase costs, create barriers to market access, generate penalties, or require significant adaptation of business practices and delivery models."
   },
-  'B1': {
-    title: 'Corruption and bribery exposure',
-    description: 'Risk of direct or indirect involvement in corruption, bribery, facilitation payments, influence peddling, or other improper advantages in connection with obtaining or retaining business, particularly through third parties, project staff, public officials, or high-risk operating environments.'
+  "B1": {
+    "title": "Corruption and bribery exposure",
+    "description": "Risk of direct or indirect involvement in corruption, bribery, facilitation payments, influence peddling, or other improper advantages in connection with obtaining or retaining business, particularly through third parties, project staff, public officials, or high-risk operating environments."
   },
-  'B2': {
-    title: 'Anti-competitive practices',
-    description: 'Risk of engaging in or being associated with conduct that distorts fair competition, including bid-rigging, price coordination, market sharing, inappropriate exchange of competitive information, or other restricted tendering practices, whether deliberate or arising from weak controls.'
+  "B2": {
+    "title": "Anti-competitive practices",
+    "description": "Risk of engaging in or being associated with conduct that distorts fair competition, including bid-rigging, price coordination, market sharing, inappropriate exchange of competitive information, or other restricted tendering practices, whether deliberate or arising from weak controls."
   },
-  'B3': {
-    title: 'Coercive and improper business practices',
-    description: 'Risk of coercive, deceptive, improper, or non-transparent business conduct that undermines procurement integrity or business relationships, including conflicts of interest, undue influence, misleading representations, or unacceptable pressure placed on decision-makers or counterparties.'
+  "B3": {
+    "title": "Coercive and improper business practices",
+    "description": "Risk of coercive, deceptive, improper, or non-transparent business conduct that undermines procurement integrity or business relationships, including conflicts of interest, undue influence, misleading representations, or unacceptable pressure placed on decision-makers or counterparties."
   },
-  'B4': {
-    title: 'Fraud and financial misconduct',
-    description: 'Risk of internal or external fraud, misappropriation of assets, financial manipulation, false invoicing, procurement fraud, expense abuse, or other dishonest acts arising from weak controls, inadequate oversight, or insufficient segregation of duties.'
+  "B4": {
+    "title": "Fraud and financial misconduct",
+    "description": "Risk of internal or external fraud, misappropriation of assets, financial manipulation, false invoicing, procurement fraud, expense abuse, or other dishonest acts arising from weak controls, inadequate oversight, or insufficient segregation of duties."
   },
-  'B5': {
-    title: 'Anti-trust and competition law violations',
-    description: 'Risk of breaching anti-trust or competition law through coordinated behavior with competitors, abusive commercial arrangements, market dominance misuse, or transactions and partnerships that may restrict competition or create regulatory exposure.'
+  "B5": {
+    "title": "Anti-trust and competition law violations",
+    "description": "Risk of breaching anti-trust or competition law through coordinated behavior with competitors, abusive commercial arrangements, market dominance misuse, or transactions and partnerships that may restrict competition or create regulatory exposure."
   },
-  'B6': {
-    title: 'Modern slavery and labour exploitation',
-    description: 'Risk of forced labour, child labour, human trafficking, retention of identity documents, exploitative labour conditions, or broader human rights violations in operations or the supply chain, particularly where due diligence over subcontractors, suppliers, and local practices is insufficient.'
+  "B6": {
+    "title": "Modern slavery and labour exploitation",
+    "description": "Risk of forced labour, child labour, human trafficking, retention of identity documents, exploitative labour conditions, or broader human rights violations in operations or the supply chain, particularly where due diligence over subcontractors, suppliers, and local practices is insufficient."
   },
-  'C1': {
-    title: 'Climate change and physical risk',
-    description: 'Risk that climate change and related physical events — including extreme heat, flooding, storms, wildfire, water stress, or other natural hazards — disrupt operations, affect project delivery, increase safety exposure, or impair infrastructure performance and business continuity.'
+  "C1": {
+    "title": "Health risks and occupational exposure",
+    "description": "Risk of harm to employee or public health arising from occupational exposure, unsafe working conditions, fatigue, inadequate health monitoring, or health-related disruption including epidemic or pandemic conditions."
   },
-  'C10': {
-    title: 'Business continuity and operational resilience',
-    description: 'Risk of significant disruption to critical operations due to crisis events, natural disasters, pandemics, infrastructure failure, or external shocks, where continuity planning, crisis governance, recovery capability, or resilience testing is inadequate.'
+  "C2": {
+    "title": "Safety risks and accidents",
+    "description": "Risk of injuries, fatalities, or major safety incidents affecting employees, contractors, or third parties due to unsafe work practices, weak safety culture, inadequate supervision, insufficient training, or failure to apply health and safety requirements in offices, sites, travel, and project environments."
   },
-  'C2': {
-    title: 'Biodiversity loss and ecosystem impact',
-    description: 'Risk that project activities or operational practices adversely affect biodiversity, protected habitats, or ecosystems, leading to regulatory issues, reputational damage, project opposition, or failure to meet environmental and sustainability commitments.'
+  "C3": {
+    "title": "Security risks and physical threats",
+    "description": "Risk of harm to people, facilities, or assets due to theft, violence, sabotage, terrorism, civil unrest, travel insecurity, or weak security arrangements in high-risk locations or project settings."
   },
-  'C3': {
-    title: 'Pollution, waste, and environmental management',
-    description: 'Risk of non-compliance with environmental requirements relating to pollution, emissions, waste, hazardous substances, or site impacts, including inadequate environmental controls during project delivery, office operations, or third-party activities.'
+  "C4": {
+    "title": "Cybersecurity attacks and system compromise",
+    "description": "Risk of cyberattacks or system compromise \u2014 including ransomware, phishing, malware, unauthorized access, or service disruption \u2014 affecting operational continuity, data integrity, financial performance, contractual compliance, or stakeholder trust."
   },
-  'C4': {
-    title: 'Health risks and occupational exposure',
-    description: 'Risk of harm to employee or public health arising from occupational exposure, unsafe working conditions, fatigue, inadequate health monitoring, or health-related disruption including epidemic or pandemic conditions.'
+  "C5": {
+    "title": "Information and confidential data protection",
+    "description": "Risk of loss, leakage, misuse, or unauthorized disclosure of confidential information, intellectual property, client-sensitive material, commercial data, or strategic internal information due to weak access controls, document practices, third-party exposure, or poor information governance."
   },
-  'C5': {
-    title: 'Safety risks and accidents',
-    description: 'Risk of injuries, fatalities, or major safety incidents affecting employees, contractors, or third parties due to unsafe work practices, weak safety culture, inadequate supervision, insufficient training, or failure to apply health and safety requirements in offices, sites, travel, and project environments.'
+  "C6": {
+    "title": "Personal data protection and privacy",
+    "description": "Risk of non-compliance with personal data protection and privacy laws, including inappropriate processing, weak controls over employee or client personal data, inadequate response to data subject rights, and insufficient oversight of processors or cross-border transfers."
   },
-  'C6': {
-    title: 'Security risks and physical threats',
-    description: 'Risk of harm to people, facilities, or assets due to theft, violence, sabotage, terrorism, civil unrest, travel insecurity, or weak security arrangements in high-risk locations or project settings.'
+  "C7": {
+    "title": "Business continuity and operational resilience",
+    "description": "Risk of significant disruption to critical operations due to crisis events, natural disasters, pandemics, infrastructure failure, or external shocks, where continuity planning, crisis governance, recovery capability, or resilience testing is inadequate."
   },
-  'C7': {
-    title: 'Cybersecurity attacks and system compromise',
-    description: 'Risk of cyberattacks or system compromise — including ransomware, phishing, malware, unauthorized access, or service disruption — affecting operational continuity, data integrity, financial performance, contractual compliance, or stakeholder trust.'
+  "D1": {
+    "title": "Weak project and contract management",
+    "description": "Risk of margin erosion, delays, claims, penalties, disputes, or client dissatisfaction resulting from weak project governance, poor contract understanding, ineffective change management, inadequate commercial protection, weak invoicing discipline, or failure to manage contractual obligations throughout delivery."
   },
-  'C8': {
-    title: 'Information and confidential data protection',
-    description: 'Risk of loss, leakage, misuse, or unauthorized disclosure of confidential information, intellectual property, client-sensitive material, commercial data, or strategic internal information due to weak access controls, document practices, third-party exposure, or poor information governance.'
+  "D2": {
+    "title": "Technical weakness and non-quality in delivery",
+    "description": "Risk of technical errors, design deficiencies, inadequate quality assurance, insufficient checking and review, or failure to maintain technical excellence, leading to rework, liability, client claims, safety consequences, or reputational damage."
   },
-  'C9': {
-    title: 'Personal data protection and privacy',
-    description: 'Risk of non-compliance with personal data protection and privacy laws, including inappropriate processing, weak controls over employee or client personal data, inadequate response to data subject rights, and insufficient oversight of processors or cross-border transfers.'
+  "D3": {
+    "title": "Production model disruption and resource productivity",
+    "description": "Risk that inefficient production schemes, excessive unproductive hours, poorly calibrated best-shoring, over-reliance on certain delivery centers, or weak workload balancing reduce productivity, weaken competitiveness, or erode profitability."
   },
-  'D1': {
-    title: 'Project and contract management failures',
-    description: 'Risk of margin erosion, delays, claims, penalties, disputes, or client dissatisfaction resulting from weak project governance, poor contract understanding, ineffective change management, inadequate commercial protection, weak invoicing discipline, or failure to manage contractual obligations throughout delivery.'
+  "D4": {
+    "title": "Weakness in management of third-party and stakeholders",
+    "description": "Risk arising from inadequate selection, due diligence, onboarding, oversight, or control of partners, subcontractors, suppliers, and freelancers, including poor delivery quality, ethical misalignment, compliance failure, insurance gaps, financial weakness, or reputational exposure."
   },
-  'D2': {
-    title: 'Technical excellence and delivery quality',
-    description: 'Risk of technical errors, design deficiencies, inadequate quality assurance, insufficient checking and review, or failure to maintain technical excellence, leading to rework, liability, client claims, safety consequences, or reputational damage.'
+  "D5": {
+    "title": "Foreign exchange volatility",
+    "description": "Risk that foreign exchange movements adversely affect revenues, costs, margins, cash generation, or consolidation of financial results, especially where contractual pricing, staffing, or delivery costs are denominated in different currencies."
   },
-  'D3': {
-    title: 'Production model and resource efficiency',
-    description: 'Risk that inefficient production schemes, excessive unproductive hours, poorly calibrated best-shoring, over-reliance on certain delivery centers, or weak workload balancing reduce productivity, weaken competitiveness, or erode profitability.'
+  "D6": {
+    "title": "Tax exposure and adverse tax changes",
+    "description": "Risk of unexpected tax costs, penalties, disputes, or reduced profitability arising from adverse tax changes, weak tax assessment during bids, transfer pricing issues, or non-compliance with tax obligations across jurisdictions."
   },
-  'D4': {
-    title: 'Third-party and supply chain management',
-    description: 'Risk arising from inadequate selection, due diligence, onboarding, oversight, or control of partners, subcontractors, suppliers, and freelancers, including poor delivery quality, ethical misalignment, compliance failure, insurance/probity gaps, financial weakness, or reputational exposure.'
+  "D7": {
+    "title": "Insufficient cash generation, debt, and capital access",
+    "description": "Risk of insufficient cash generation, weak collection performance, deteriorating liquidity, financing constraints, covenant pressure, or restricted access to capital that limits the ability to fund operations, support growth, absorb payment delays, or pursue strategic opportunities."
   },
-  'D5': {
-    title: 'Foreign exchange volatility',
-    description: 'Risk that foreign exchange movements adversely affect revenues, costs, margins, cash generation, or consolidation of financial results, especially where contractual pricing, staffing, or delivery costs are denominated in different currencies.'
+  "E1": {
+    "title": "Key resources, critical competencies, and workforce adequacy",
+    "description": "Risk of not having the right number, quality, mobility, seniority, certifications, or mix of resources to support bids, projects, growth plans, and succession needs, including over-dependence on key individuals and difficulties attracting or retaining critical expertise."
   },
-  'D6': {
-    title: 'Tax exposure and adverse tax changes',
-    description: 'Risk of unexpected tax costs, penalties, disputes, or reduced profitability arising from adverse tax changes, weak tax assessment during bids, transfer pricing issues, or non-compliance with tax obligations across jurisdictions.'
+  "E2": {
+    "title": "Cultural alignment and employee engagement",
+    "description": "Risk that weak cultural alignment, inconsistent leadership behavior, post-acquisition integration challenges, hybrid-working tensions, low understanding of strategy, or reduced employee commitment undermine performance, retention, ethics, and the ability to execute strategic priorities."
   },
-  'D7': {
-    title: 'Cash generation, debt, and capital access',
-    description: 'Risk of insufficient cash generation, weak collection performance, deteriorating liquidity, financing constraints, covenant pressure, or restricted access to capital that limits the ability to fund operations, support growth, absorb delays in payment, or pursue strategic opportunities.'
+  "E3": {
+    "title": "Diversity, equity, and inclusion",
+    "description": "Risk of failing to maintain a diverse, equitable, and inclusive working environment, including exposure to discrimination, exclusion, weak representation, or failure to meet employee, client, regulatory, and societal expectations."
   },
-  'E1': {
-    title: 'Key resources, critical competencies, and workforce adequacy',
-    description: 'Risk of not having the right number, quality, mobility, seniority, certifications, or mix of resources to support bids, projects, growth plans, and succession needs, including over-dependence on key individuals and difficulties attracting or retaining critical expertise.'
+  "F1": {
+    "title": "Unbalanced business portfolio",
+    "description": "Risk that excessive dependence on specific sectors, geographies, clients, project types, or flagship contracts weakens resilience, reduces flexibility, and exposes the organisation to downturns, client decisions, or funding changes inconsistent with the medium-term plan."
   },
-  'E2': {
-    title: 'Cultural alignment and employee engagement',
-    description: 'Risk that weak cultural alignment, inconsistent leadership behavior, post-acquisition integration challenges, hybrid-working tensions, low understanding of strategy, or reduced employee commitment undermine performance, retention, ethics, and the ability to execute strategic priorities.'
+  "F2": {
+    "title": "Unfollowed market trends and missed opportunities",
+    "description": "Risk of failing to identify, invest in, structure, and scale new service lines, adjacent markets, digital offers, AI-enabled solutions, sustainability services, or innovation opportunities in line with changing client needs and strategic ambitions."
   },
-  'E3': {
-    title: 'Diversity, equity, and inclusion',
-    description: 'Risk of failing to maintain a diverse, equitable, and inclusive working environment, including exposure to discrimination, exclusion, weak representation, or failure to meet employee, client, regulatory, and societal expectations.'
+  "F3": {
+    "title": "Wrong or missing opportunities for external growth",
+    "description": "Risk that no or weak target selection negatively impacts the external growth of the entity or Group."
   },
-  'F1': {
-    title: 'Business portfolio balance and market diversification',
-    description: 'Risk that excessive dependence on specific sectors, geographies, clients, project types, or flagship contracts weakens resilience, reduces flexibility, and exposes the organisation to downturns, client decisions, or funding changes inconsistent with the medium-term plan.'
+  "F4": {
+    "title": "Integration failures",
+    "description": "Risk that acquisitions fail to deliver expected strategic fit, financial returns, synergies, or operating benefits because of weak target selection, unrealistic business plans, poor due diligence, insufficient integration, or loss of key talent."
   },
-  'F2': {
-    title: 'Market trends and new service opportunities',
-    description: 'Risk of failing to identify, invest in, structure, and scale new service lines, adjacent markets, digital offers, AI-enabled solutions, sustainability services, or innovation opportunities in line with changing client needs and strategic ambitions.'
+  "G1": {
+    "title": "Competitor moves, market shifts, and customer behaviour",
+    "description": "Risk of losing market position, pricing power, or growth momentum due to competitor actions, market consolidation, aggressive pricing, reduced public investment, changing procurement models, customer insourcing, or evolving customer expectations."
   },
-  'F3': {
-    title: 'Acquisition performance, ROI, and integration',
-    description: 'Risk that acquisitions fail to deliver expected strategic fit, financial returns, synergies, or operating benefits because of weak target selection, unrealistic business plans, poor due diligence, insufficient integration, or loss of key talent.'
+  "G2": {
+    "title": "Bid non-effectiveness",
+    "description": "Risk of underperformance in orders intake, win rate, selectivity, or strategic positioning due to weak upstream commercial activity, inadequate bid discipline, poor pursuit choices, insufficient must-win focus, weak partner strategy, or lack of alignment between bidding and medium-term objectives."
   },
-  'G1': {
-    title: 'Competitor moves, market shifts, and customer behaviour',
-    description: 'Risk of losing market position, pricing power, or growth momentum due to competitor actions, market consolidation, aggressive pricing, reduced public investment, changing procurement models, customer insourcing, or evolving customer expectations.'
+  "I1": {
+    "title": "Weak internal governance, processes, and internal tooling",
+    "description": "Risk that weak governance, fragmented systems, poor digital enablement, inconsistent process application, excessive bureaucracy, unclear decision rights, or insufficient automation reduce operational efficiency, reporting quality, control effectiveness, and organisational agility."
   },
-  'G2': {
-    title: 'Bid effectiveness and strategic partnerships',
-    description: 'Risk of underperformance in orders intake, win rate, selectivity, or strategic positioning due to weak upstream commercial activity, inadequate bid discipline, poor pursuit choices, insufficient must-win focus, weak partner strategy, or lack of alignment between bidding and medium-term objectives.'
+  "I2": {
+    "title": "Business model disruption",
+    "description": "Risk that the current business model becomes less sustainable or insufficiently adaptive due to market disruption, technology shifts, organisational rigidity, changing client expectations, or inability to create value in new ways over the medium to long term."
   },
-  'I1': {
-    title: 'Governance, processes, and internal tooling',
-    description: 'Risk that weak governance, fragmented systems, poor digital enablement, inconsistent process application, excessive bureaucracy, unclear decision rights, or insufficient automation reduce operational efficiency, reporting quality, control effectiveness, and organisational agility.'
+  "J1": {
+    "title": "Purchasing model and supply chain resilience",
+    "description": "Risk of disruption, cost pressure, delivery failure, or resilience weakness arising from over-dependence on certain suppliers or procurement models, insufficient supply chain risk assessment, poor anticipation of availability constraints, or inadequate sourcing and purchasing strategy."
   },
-  'I2': {
-    title: 'Business model disruption and sustainability',
-    description: 'Risk that the current business model becomes less sustainable or insufficiently adaptive due to market disruption, technology shifts, organisational rigidity, changing client expectations, or inability to create value in new ways over the medium to long term.'
+  "K1": {
+    "title": "Climate change and physical risk",
+    "description": "Risk that climate change potential consequences are not anticipated within the design and production on projects, which may result in non-sustainable solutions perceived as to be avoided, with financial and reputational consequences for SYSTRA."
   },
-  'J1': {
-    title: 'Purchasing model and supply chain resilience',
-    description: 'Risk of disruption, cost pressure, delivery failure, or resilience weakness arising from over-dependence on certain suppliers or procurement models, insufficient supply chain risk assessment, poor anticipation of availability constraints, or inadequate sourcing and purchasing strategy.'
+  "K2": {
+    "title": "Biodiversity loss and ecosystem impact",
+    "description": "Risk that project activities or operational practices adversely affect biodiversity, protected habitats, or ecosystems, leading to regulatory issues, reputational damage, project opposition, or failure to meet environmental and sustainability commitments."
   },
+  "K3": {
+    "title": "Pollution, waste, and environmental management",
+    "description": "Risk of non-compliance with environmental requirements relating to pollution, emissions, waste, hazardous substances, or site impacts, including inadequate environmental controls during project delivery, office operations, or third-party activities."
+  },
+  "K4": {
+    "title": "Natural disaster",
+    "description": "Risk that natural disasters \u2014 including extreme heat, flooding, storms, wildfire, water stress, or other natural hazards \u2014 disrupt operations, affect project delivery, increase safety exposure, or impair infrastructure performance and business continuity."
+  }
 };
 
 const OPENAI_KEY_STORAGE = 'erm_openai_key';
@@ -8378,6 +9264,7 @@ document.getElementById('clearOpenaiKeyBtn')?.addEventListener('click', ()=>{
 
 // Show current key status on Admin Settings load
 document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn=>{
+  if(btn.dataset.tab === 'gltfa') renderGltFaTab();
   if(btn.dataset.tab === 'adminsettings'){
     btn.addEventListener('click', async ()=>{
       const keyStatus = document.getElementById('openaiKeyStatus');
@@ -8517,7 +9404,7 @@ const GROUP_FAMILY_KEY = "erm_group_families_v1";
 const BU_KEY = "erm_business_units_v1";
 const STATUS_KEY = "erm_statuses_v1";
 const SEED_GROUP_FAMILIES = ["G1_Risk of Debarment","G2_Operational / Financial shortfall","G3_Damaged Image","G4_New Business standards","G5_Change in market rules","G6_Ineffective Governance","G7_External growth and successful integration"];
-const SEED_BUS = ["ANZ","ASIA","BRA","CAN","DBI","DNK","EGY","FRA","GLT","IND","ITA","KSA","UKI","USA"];
+const SEED_BUS = ["ANZ","ASIA","BRA","CAN","DBI","DNK","EGY","FA","FRA","GLT","IND","ITA","KSA","SWE","UKI","USA"];
 const SEED_STATUSES = ["Ongoing","Late","Not started","To be reconsidered","Closed"];
 
 function getOptionList(key, seed){
@@ -8671,6 +9558,11 @@ async function addNewRiskAndOpen(){
 
 document.getElementById('addRiskBtn').addEventListener('click', addNewRiskAndOpen);
 document.getElementById('addRiskRegisterBtn')?.addEventListener('click', addNewRiskAndOpen);
+document.getElementById('importExcelBtn')?.addEventListener('click', ()=>{
+  const inp = document.getElementById('importFileInput');
+  if(inp){ inp.click(); }
+  else { alert('Import is available in Admin Settings → Import Risk Data'); }
+});
 
 // Clean orphan entries — entries with no proper universe code (bad consolidations)
 document.getElementById('cleanOrphansBtn')?.addEventListener('click', async ()=>{
@@ -8727,7 +9619,7 @@ document.getElementById('bulkDeleteBtn')?.addEventListener('click', async ()=>{
   await refreshDashboard();
 });
 
-document.getElementById('resetRisksBtn').addEventListener('click', async ()=>{
+document.getElementById('resetRisksBtn')?.addEventListener('click', async ()=>{
   if(confirm('This replaces all current risks (including any imports and edits) with the original 20-risk seed list. Continue?')){
     await RiskRegistry.resetToSeed();
     await refreshDashboard();
@@ -9131,19 +10023,30 @@ async function startFacilitatorPanel(sessionId){
   document.getElementById('facilitatorPanel').style.display = '';
   if(facilitatorUnsubscribe){ facilitatorUnsubscribe(); facilitatorUnsubscribe = null; }
 
-  // Use universe as the scoring template — same 32 risks participants see
+  // Load session to check selectedRisks
+  const sessions = await SessionRegistry.getAll();
+  const session  = sessions.find(s=>s.id===sessionId);
+  const selectedCodes = session?.selectedRisks || []; // empty = all
+
+  // Build scoring list from universe
   const universeEntries = await UniverseRegistry.getAll();
   const uDefaults = UniverseDefaultsRegistry.getAll();
-  facilitatorRisks = universeEntries.map(u=>{
+  const allRisks = universeEntries.map(u=>{
     const def = uDefaults[u.code] || {};
     return {
       id: u.code,
       title: def.title || u.label,
       description: def.description || '',
-      riskUniverse: `${u.code}_${u.label}`,
+      riskUniverse: u.code+'_'+u.label,
       groupFamily: GroupUniverseMapRegistry.getFamilyForUniverse(u.code) || ''
     };
   });
+
+  // Filter to selected risks if a subset was chosen
+  facilitatorRisks = (selectedCodes.length > 0 && selectedCodes.length < allRisks.length)
+    ? allRisks.filter(r => selectedCodes.includes(r.id))
+    : allRisks;
+
   if(!facilitatorRisks.length) facilitatorRisks = await RiskRegistry.getAll();
 
   // Guard: a live session created before Firebase connected won't have a
@@ -9235,7 +10138,16 @@ document.getElementById('facilitatorNextBtn')?.addEventListener('click', async (
 
 async function refreshCollectTab(){
   const sessions = await populateActiveSessionSelect('activeSessionSelect');
-  if(!sessions.length) return;
+  if(!sessions.length){
+    // Show helpful empty state
+    const fp = document.getElementById('facilitatorPanel');
+    if(fp) fp.style.display = 'none';
+    const qrSection = document.getElementById('collectQrSection');
+    if(qrSection) qrSection.style.display = 'none';
+    const respSection = document.getElementById('collectRespSection');
+    if(respSection) respSection.innerHTML = '<div style="padding:32px;text-align:center;color:var(--ink-soft);"><div style="font-size:32px;margin-bottom:12px;">📋</div><div style="font-weight:700;font-size:15px;color:var(--navy);margin-bottom:8px;">No sessions yet</div><div style="font-size:13px;">Click <b>+ New session</b> above to create your first workshop session.<br>Each session gets its own QR code that participants scan to score risks.</div></div>';
+    return;
+  }
   setupQr(activeSessionId);
   const responses = await Store.getBySession(activeSessionId);
   renderRespList(responses);
@@ -9262,14 +10174,13 @@ document.getElementById('activeSessionSelect')?.addEventListener('change', async
 });
 
 document.getElementById('newSessionBtn')?.addEventListener('click', async ()=>{
-  // Build BU list for the dialog
   const buList = JSON.parse(localStorage.getItem('erm_bus_v1')||'null') || SEED_BUS;
 
   const label = prompt('Name this session (e.g. "France ERM Workshop — June 2026"):', '');
-  if(label === null) return;
+  if(label === null || !label.trim()) return;
 
   const bu = prompt(
-    `Which BU is this workshop for?\nAvailable BUs: ${buList.join(', ')}\n\n(Leave blank if multi-BU or global session)`,
+    'Which BU is this workshop for?\nAvailable BUs: '+buList.join(', ')+'\n\n(Leave blank if multi-BU or global session)',
     ''
   );
   if(bu === null) return;
@@ -9279,14 +10190,108 @@ document.getElementById('newSessionBtn')?.addEventListener('click', async ()=>{
     'Click Cancel for a SELF-PACED session — participants score at their own speed.'
   );
 
+  // ── Risk selection dialog ─────────────────────────────────────────
+  // Load universe and show a selection UI in a modal overlay
+  const universeEntries = await UniverseRegistry.getAll();
+  const uDefaults = UniverseDefaultsRegistry.getAll();
+  const allCodes = universeEntries.length > 0 ? universeEntries : SEED_UNIVERSE;
+
+  let selectedRisks = await new Promise(resolve => {
+    // Build a modal overlay for risk selection
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:720px;width:100%;max-height:80vh;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+
+    // Group by first letter for display
+    const grouped = {};
+    allCodes.forEach(u => {
+      const g = u.code[0];
+      if(!grouped[g]) grouped[g] = [];
+      grouped[g].push(u);
+    });
+
+    modal.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <h2 style="margin:0;font-size:17px;color:#102A43;">Select risks for this session</h2>
+          <div style="font-size:12px;color:#666;margin-top:4px;">Choose which universe categories participants will score. Uncheck any that are not relevant for this workshop.</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0;margin-left:16px;">
+          <button id="riskSelAll" style="font-size:11px;padding:4px 10px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f5f6f8;">Select all</button>
+          <button id="riskSelNone" style="font-size:11px;padding:4px 10px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f5f6f8;">Clear all</button>
+        </div>
+      </div>
+      <div id="riskSelBody" style="overflow-y:auto;flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+        ${Object.entries(grouped).map(([g, codes]) => `
+          <div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:6px;">${g} — ${codes[0] ? (uDefaults[codes[0].code]?.title||codes[0].label).split(' ').slice(0,4).join(' ')+'...' : ''}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              ${codes.map(u => {
+                const title = uDefaults[u.code]?.title || u.label;
+                return `<label style="display:flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:12px;background:#f8fafc;" title="${title}">
+                  <input type="checkbox" value="${u.code}" checked style="width:13px;height:13px;">
+                  <span style="font-family:monospace;font-weight:700;font-size:11px;color:#2C5282;">${u.code}</span>
+                  <span style="color:#444;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${title.slice(0,30)}${title.length>30?'…':''}</span>
+                </label>`;
+              }).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px;border-top:1px solid #e2e8f0;">
+        <span id="riskSelCount" style="font-size:12px;color:#666;"></span>
+        <div style="display:flex;gap:8px;">
+          <button id="riskSelCancel" style="padding:8px 16px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f5f6f8;font-size:13px;">Cancel</button>
+          <button id="riskSelConfirm" style="padding:8px 20px;background:#102A43;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">Create Session →</button>
+        </div>
+      </div>`;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const updateCount = () => {
+      const checked = modal.querySelectorAll('input[type=checkbox]:checked').length;
+      const countEl = document.getElementById('riskSelCount');
+      if(countEl) countEl.textContent = checked + ' of ' + allCodes.length + ' risks selected';
+    };
+    updateCount();
+    modal.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', updateCount));
+
+    document.getElementById('riskSelAll').onclick  = () => { modal.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=true); updateCount(); };
+    document.getElementById('riskSelNone').onclick = () => { modal.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=false); updateCount(); };
+    document.getElementById('riskSelCancel').onclick  = () => { document.body.removeChild(overlay); resolve(null); };
+    document.getElementById('riskSelConfirm').onclick = () => {
+      const selected = [...modal.querySelectorAll('input[type=checkbox]:checked')].map(cb=>cb.value);
+      document.body.removeChild(overlay);
+      resolve(selected);
+    };
+  });
+
+  if(selectedRisks === null) return; // cancelled
+
   const session = await SessionRegistry.create(
-    label,
+    label.trim(),
     liveMode ? 'live' : 'selfpaced',
     bu.trim().toUpperCase()
   );
+
+  // Save selected risks on the session
+  if(selectedRisks.length < allCodes.length){
+    const allSessions = await sessionBackend.getAll();
+    const idx = allSessions.findIndex(s=>s.id===session.id);
+    if(idx>=0){
+      allSessions[idx].selectedRisks = selectedRisks;
+      await sessionBackend.saveAll(allSessions);
+    }
+  } else {
+    session.selectedRisks = []; // empty = all risks
+  }
+
   activeSessionId = session.id;
   await refreshCollectTab();
-  alert(`Session "${session.label}"${session.bu ? ' (BU: '+session.bu+')' : ''} created. QR code and link are ready below.`);
+  alert('Session "'+session.label+'"'+(session.bu?' (BU: '+session.bu+')':'')+' created with '+selectedRisks.length+' risks. QR code and link are ready below.');
 });
 
 document.getElementById('goToSessionsBtn')?.addEventListener('click', ()=>{
@@ -9639,6 +10644,12 @@ document.getElementById('startSurveyBtn').addEventListener('click', async ()=>{
   });
 
   // If universe is empty fall back to register risks
+  // Filter to session's selected risks if a subset was chosen
+  const selectedCodes = preservedSession?.selectedRisks || [];
+  if(selectedCodes.length > 0 && selectedCodes.length < scoringRisks.length){
+    scoringRisks = scoringRisks.filter(r => selectedCodes.includes(r.id));
+  }
+
   if(!scoringRisks.length){
     scoringRisks = await RiskRegistry.getAll();
   }

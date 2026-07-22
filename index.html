@@ -4436,10 +4436,16 @@ const ERM_RISKS_COLLECTION = "erm_risks";
 
 const LocalRiskRegistry = {
   async getAll(){
-    const parsed = safeGetArray(RISKS_KEY);
-    if(parsed.length > 0) return parsed;
-    localStorage.setItem(RISKS_KEY, JSON.stringify(SEED_RISKS));
-    return JSON.parse(JSON.stringify(SEED_RISKS));
+    // Only seed on true first-run (key never set before), not whenever the
+    // list is empty — otherwise deleting all risks on purpose gets silently
+    // undone the next time the dashboard refreshes. Use "Reset to Seed" to
+    // bring the 20 seed risks back intentionally.
+    const raw = localStorage.getItem(RISKS_KEY);
+    if(raw === null){
+      localStorage.setItem(RISKS_KEY, JSON.stringify(SEED_RISKS));
+      return JSON.parse(JSON.stringify(SEED_RISKS));
+    }
+    return safeGetArray(RISKS_KEY);
   },
   async saveAll(list){
     localStorage.setItem(RISKS_KEY, JSON.stringify(list));
@@ -4450,13 +4456,33 @@ const LocalRiskRegistry = {
   }
 };
 
+const ERM_META_COLLECTION = "erm_meta";
+const ERM_META_RISKS_DOC = "risks_state";
+
+async function _risksHaveBeenInitialized(){
+  const {collection, doc, getDoc} = window.__fsMod;
+  const snap = await getDoc(doc(collection(fbDb, ERM_META_COLLECTION), ERM_META_RISKS_DOC));
+  return snap.exists();
+}
+async function _markRisksInitialized(){
+  const {collection, doc, setDoc} = window.__fsMod;
+  await setDoc(doc(collection(fbDb, ERM_META_COLLECTION), ERM_META_RISKS_DOC), {seeded:true, at: Date.now()});
+}
+
 const FirebaseRiskRegistry = {
   async getAll(){
     try{
       const {collection, getDocs} = window.__fsMod;
       const snap = await getDocs(collection(fbDb, ERM_RISKS_COLLECTION));
       if(snap.empty){
+        // Only auto-seed on a true first-run. If the register was already
+        // initialized before (marker doc exists), an empty collection means
+        // someone deliberately deleted everything — leave it empty. Use the
+        // "Reset to Seed" button to bring the 20 seed risks back on purpose.
+        const alreadyInitialized = await _risksHaveBeenInitialized().catch(()=>false);
+        if(alreadyInitialized) return [];
         await FirebaseRiskRegistry.saveAll(SEED_RISKS);
+        await _markRisksInitialized().catch(()=>{});
         return JSON.parse(JSON.stringify(SEED_RISKS));
       }
       const rawDocs = snap.docs.map(d=>d.data());
@@ -4535,6 +4561,7 @@ const RiskRegistry = {
   },
   async resetToSeed(){
     await riskBackend.saveAll(SEED_RISKS);
+    if(riskBackend === FirebaseRiskRegistry){ await _markRisksInitialized().catch(()=>{}); }
   },
   nextId(existing){
     const nums = existing.map(r=>{
@@ -6361,7 +6388,7 @@ function renderTable(){
     btn.addEventListener('click', async (e)=>{
       const id = e.target.dataset.id;
       if(confirm(`Delete risk ${id}? This cannot be undone.`)){
-        await RiskRegistry.delete(id);
+        try{ await RiskRegistry.delete(id); } catch(err){ console.error('Delete failed:', err); alert('Delete failed: ' + (err && err.message || err) + '\n\nCheck the browser console (F12) — likely a Firestore permission issue.'); return; }
         await refreshDashboard();
       }
     });
@@ -9666,9 +9693,14 @@ document.getElementById('cleanOrphansBtn')?.addEventListener('click', async ()=>
     `Delete all ${orphans.length} orphan entries?`
   );
   if(!confirmed) return;
-  for(const r of orphans){ await RiskRegistry.delete(r.id); }
-  alert(`✓ Deleted ${orphans.length} orphan entries. Register is clean.`);
-  await refreshDashboard();
+  try{
+    for(const r of orphans){ await RiskRegistry.delete(r.id); }
+    alert(`✓ Deleted ${orphans.length} orphan entries. Register is clean.`);
+    await refreshDashboard();
+  } catch(err){
+    console.error('Orphan cleanup failed:', err);
+    alert('Cleanup failed: ' + (err && err.message || err) + '\n\nCheck the browser console (F12) — likely a Firestore permission issue.');
+  }
 });
 
 function updateBulkDeleteBtn(){
@@ -9692,12 +9724,17 @@ document.getElementById('bulkDeleteBtn')?.addEventListener('click', async ()=>{
     ? `Delete risk ${ids[0]}?`
     : `Delete ${ids.length} selected risks?\n\n${ids.slice(0,10).join(', ')}${ids.length>10?'…':''}`;
   if(!confirm(msg + '\n\nThis cannot be undone.')) return;
-  for(const id of ids){
-    await RiskRegistry.delete(id);
+  try{
+    for(const id of ids){
+      await RiskRegistry.delete(id);
+    }
+    document.getElementById('selectAllRisks').checked = false;
+    updateBulkDeleteBtn();
+    await refreshDashboard();
+  } catch(err){
+    console.error('Bulk delete failed:', err);
+    alert('Delete failed: ' + (err && err.message || err) + '\n\nCheck the browser console (F12). This is usually a Firestore permission/security-rules issue on the erm_risks collection.');
   }
-  document.getElementById('selectAllRisks').checked = false;
-  updateBulkDeleteBtn();
-  await refreshDashboard();
 });
 
 document.getElementById('resetRisksBtn')?.addEventListener('click', async ()=>{
@@ -9897,12 +9934,17 @@ document.getElementById('importFileInput').addEventListener('change', (e)=>{
 });
 
 document.getElementById('confirmImportBtn').addEventListener('click', async ()=>{
-  const {added, updated} = await RiskRegistry.addMany(pendingImportRows);
-  document.getElementById('importPreview').classList.add('hidden');
-  document.getElementById('importFileInput').value = '';
-  pendingImportRows = [];
-  showImportMessage('success', `Import complete — ${added} new risk${added===1?'':'s'} added, ${updated} existing risk${updated===1?'':'s'} updated.`);
-  await refreshDashboard();
+  try{
+    const {added, updated} = await RiskRegistry.addMany(pendingImportRows);
+    document.getElementById('importPreview').classList.add('hidden');
+    document.getElementById('importFileInput').value = '';
+    pendingImportRows = [];
+    showImportMessage('success', `Import complete — ${added} new risk${added===1?'':'s'} added, ${updated} existing risk${updated===1?'':'s'} updated.`);
+    await refreshDashboard();
+  } catch(err){
+    console.error('Import failed:', err);
+    showImportMessage('error', 'Import failed while saving: ' + (err && err.message || err) + ' — check the browser console (F12). This is usually a Firestore permission/security-rules issue on the erm_risks collection.');
+  }
 });
 document.getElementById('cancelImportBtn').addEventListener('click', ()=>{
   document.getElementById('importPreview').classList.add('hidden');

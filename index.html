@@ -6040,7 +6040,7 @@ function renderHeatmaps(){
       steps: 4,
       xInvert: true,
       zoneFor: (xRaw,yRaw,xInvert) => {
-        const ctrl = xInvert ? (5-xRaw) : xRaw;
+        const ctrl = xRaw; // xRaw already runs Optimized(1,best) -> Informal(4,worst) left-to-right
         const inh = yRaw;
         const p = ctrl * inh;
         if(p<=2) return 'low';
@@ -6089,10 +6089,10 @@ function renderGridHeatmap(containerId, items, opts){
   const cellH = plotH / steps;
 
   const ZONE_COLORS = {
-    low:      '#27AE60',
-    moderate: '#F1C40F',
-    high:     '#E67E22',
-    critical: '#E74C3C'
+    low:      '#92D050',
+    moderate: '#FFFF00',
+    high:     '#ED7D31',
+    critical: '#FF0000'
   };
 
   // Build the coloured grid cells
